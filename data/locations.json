@@ -1,0 +1,75 @@
+[
+  {
+    "name": "Doheny Library",
+    "type": "library",
+    "latitude": 34.0205,
+    "longitude": -118.2839,
+    "address": "3550 Trousdale Parkway, Los Angeles, CA 90089",
+    "has_polygon": true
+  },
+  {
+    "name": "Lyon Center",
+    "type": "gym",
+    "latitude": 34.0219,
+    "longitude": -118.2871,
+    "address": "1026 W. 34th St., Los Angeles, CA 90089",
+    "has_polygon": true
+  },
+  {
+    "name": "Ralphs",
+    "type": "grocery",
+    "latitude": 34.0256,
+    "longitude": -118.2845,
+    "address": "2600 S. Vermont Ave., Los Angeles, CA 90007",
+    "has_polygon": true
+  },
+  {
+    "name": "Home",
+    "type": "home",
+    "latitude": 34.0250,
+    "longitude": -118.2900,
+    "address": "West side residential area",
+    "has_polygon": false
+  },
+  {
+    "name": "Friend's House",
+    "type": "friend_house",
+    "latitude": 34.0260,
+    "longitude": -118.2910,
+    "address": "West side residential area",
+    "has_polygon": false
+  },
+  {
+    "name": "Kaprielian Hall",
+    "type": "classroom",
+    "latitude": 34.0198,
+    "longitude": -118.2890,
+    "address": "USC Campus",
+    "has_polygon": true
+  },
+  {
+    "name": "Seeley G. Mudd Building",
+    "type": "classroom",
+    "latitude": 34.0202,
+    "longitude": -118.2865,
+    "address": "USC Campus",
+    "has_polygon": true
+  },
+  {
+    "name": "Trojan Grounds",
+    "type": "restaurant",
+    "latitude": 34.0215,
+    "longitude": -118.2855,
+    "address": "USC Campus",
+    "has_polygon": false
+  },
+  {
+    "name": "Cafe 84",
+    "type": "restaurant",
+    "latitude": 34.0220,
+    "longitude": -118.2860,
+    "address": "USC Campus",
+    "has_polygon": false
+  }
+]
+
