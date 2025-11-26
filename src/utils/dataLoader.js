@@ -3,17 +3,26 @@
  */
 
 /**
- * Load intervals data from JSON file
+ * Load intervals data from JSON file (legacy format)
  */
 export async function loadIntervals() {
   const response = await fetch('/intervals.json')
+  if (!response.ok) {
+    throw new Error(`Failed to load intervals.json: ${response.status} ${response.statusText}`)
+  }
   const data = await response.json()
+  if (!Array.isArray(data)) {
+    throw new Error('intervals.json is not an array')
+  }
+  console.log(`Loaded ${data.length} intervals from JSON`)
   return data.map(interval => ({
     ...interval,
     start_time: new Date(interval.start_time),
     end_time: new Date(interval.end_time)
   }))
 }
+
+// loadIncrements removed - using intervals.json instead
 
 /**
  * Load locations data from JSON file
@@ -46,18 +55,17 @@ export function filterIntervalsByTime(intervals, startHour, endHour) {
  */
 export function getSentimentColor(sentiment) {
   // Sentiment range: -1 (very negative) to +1 (very positive)
-  if (sentiment >= 0.3) {
-    // Positive - green shades
+  if (sentiment > 0) {
+    // Positive - green shades (any positive value)
     const intensity = Math.min(sentiment, 1)
     return [0, Math.floor(200 + 55 * intensity), 0, 200]
-  } else if (sentiment <= -0.3) {
-    // Negative - red shades
+  } else if (sentiment < 0) {
+    // Negative - red shades (any negative value)
     const intensity = Math.min(Math.abs(sentiment), 1)
     return [Math.floor(200 + 55 * intensity), 0, 0, 200]
   } else {
-    // Neutral - yellow shades
-    const intensity = Math.abs(sentiment) / 0.3
-    return [Math.floor(200 + 55 * intensity), Math.floor(200 + 55 * intensity), 0, 200]
+    // Exactly zero - yellow/neutral
+    return [255, 255, 0, 200]
   }
 }
 
@@ -90,7 +98,12 @@ export function groupIntervalsByLocation(intervals) {
 export function aggregateIntervalsByLocation(intervals) {
   const groups = {}
   
-  intervals.forEach(interval => {
+  // Filter out travel intervals - only show dots at stay locations
+  const stayIntervals = intervals.filter(interval => {
+    return interval.location_name !== 'Traveling' && interval.location_type !== 'traveling'
+  })
+  
+  stayIntervals.forEach(interval => {
     const key = `${interval.latitude.toFixed(6)},${interval.longitude.toFixed(6)}`
     if (!groups[key]) {
       groups[key] = {
@@ -160,22 +173,44 @@ export function aggregateByTimeBuckets(intervals, bucketSize = 3) {
 
 /**
  * Get sentiment for a building based on nearby intervals
+ * Optimized: uses simple distance calculation instead of expensive haversine
  */
-export function getBuildingSentiment(building, intervals, threshold = 0.0001) {
-  // Find intervals that are within the building polygon or very close
-  const buildingCenter = getPolygonCenter(building.geometry.coordinates[0])
-  const nearbyIntervals = intervals.filter(interval => {
-    const distance = haversineDistance(
-      buildingCenter[1], buildingCenter[0],
-      interval.latitude, interval.longitude
-    )
-    return distance < threshold // ~11 meters
-  })
+export function getBuildingSentiment(building, intervals, threshold = 0.0003) {
+  // Get building center (simplified - just average of coordinates)
+  const coords = building.geometry.coordinates[0]
+  let sumLat = 0, sumLon = 0
+  const coordCount = Math.min(coords.length, 10) // Sample first 10 points for speed
+  for (let i = 0; i < coordCount; i++) {
+    sumLon += coords[i][0]
+    sumLat += coords[i][1]
+  }
+  const buildingCenter = [sumLon / coordCount, sumLat / coordCount]
   
-  if (nearbyIntervals.length === 0) return null
+  // Use simple Euclidean distance (much faster than haversine for small distances)
+  // At USC latitude, 0.0001 degrees ≈ 11 meters
+  const thresholdSq = threshold * threshold
+  let sumSentiment = 0
+  let count = 0
+  const nearbyIntervals = []
   
-  const avgSentiment = nearbyIntervals.reduce((sum, i) => sum + i.sentiment_score, 0) / nearbyIntervals.length
-  return avgSentiment
+  for (const interval of intervals) {
+    const dLat = interval.latitude - buildingCenter[1]
+    const dLon = interval.longitude - buildingCenter[0]
+    const distSq = dLat * dLat + dLon * dLon
+    
+    if (distSq < thresholdSq) {
+      sumSentiment += interval.sentiment_score
+      count++
+      nearbyIntervals.push(interval)
+    }
+  }
+  
+  if (count === 0) return null
+  
+  return {
+    sentiment: sumSentiment / count,
+    intervals: nearbyIntervals
+  }
 }
 
 /**
@@ -207,28 +242,169 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 
 /**
  * Create path segments between consecutive intervals
+ * Handles both travel intervals (with multiple route points) and simple location changes
  */
 export function createTravelPaths(intervals) {
   const paths = []
   
   // Sort intervals by start time
-  const sorted = [...intervals].sort((a, b) => a.start_time - b.start_time)
+  const sorted = [...intervals].sort((a, b) => {
+    const aTime = a.start_time instanceof Date ? a.start_time : new Date(a.start_time)
+    const bTime = b.start_time instanceof Date ? b.start_time : new Date(b.start_time)
+    return aTime - bTime
+  })
   
-  for (let i = 0; i < sorted.length - 1; i++) {
+  // Group consecutive travel intervals together to form complete routes
+  let i = 0
+  while (i < sorted.length) {
     const current = sorted[i]
-    const next = sorted[i + 1]
+    const isTravel = current.location_name === 'Traveling' || current.location_type === 'traveling'
+    
+    if (isTravel) {
+      // Collect all consecutive travel intervals (these form a route)
+      const travelPoints = []
+      let travelStart = i
+      let sentimentSum = 0
+      let sentimentCount = 0
+      
+      while (i < sorted.length && (sorted[i].location_name === 'Traveling' || sorted[i].location_type === 'traveling')) {
+        travelPoints.push([sorted[i].longitude, sorted[i].latitude])
+        sentimentSum += sorted[i].sentiment_score
+        sentimentCount++
+        i++
+      }
+      
+      // Create a single path with all route points (for curved route visualization)
+      if (travelPoints.length > 1) {
+        // Calculate average sentiment for the entire route
+        const avgSentiment = sentimentCount > 0 ? sentimentSum / sentimentCount : 0
+        
+        paths.push({
+          path: travelPoints, // All route points in order
+          startTime: sorted[travelStart].start_time,
+          endTime: sorted[travelStart + travelPoints.length - 1].end_time,
+          sentiment: avgSentiment
+        })
+      }
+    } else {
+      // Regular location - check if next is different location (shouldn't happen with proper data)
+      if (i < sorted.length - 1) {
+        const next = sorted[i + 1]
+        const nextIsTravel = next.location_name === 'Traveling' || next.location_type === 'traveling'
+        
+        if (!nextIsTravel && (current.latitude !== next.latitude || current.longitude !== next.longitude)) {
+          // Direct location change (shouldn't happen often, but handle it)
+          paths.push({
+            source: [current.longitude, current.latitude],
+            target: [next.longitude, next.latitude],
+            startTime: current.end_time,
+            endTime: next.start_time,
+            sentiment: next.sentiment_score
+          })
+        }
+      }
+      i++
+    }
+  }
+  
+  return paths
+}
+
+/**
+ * Create path segments from time increments
+ * Colors paths based on travel-time sentiment, not destination
+ */
+export function createTravelPathsFromIncrements(increments) {
+  const paths = []
+  
+  for (let i = 0; i < increments.length - 1; i++) {
+    const current = increments[i]
+    const next = increments[i + 1]
     
     // Only create path if locations are different
     if (current.latitude !== next.latitude || current.longitude !== next.longitude) {
+      // Use the sentiment during travel (current increment if traveling, or average)
+      const travelSentiment = current.is_traveling ? current.sentiment_score : 
+                             (current.sentiment_score + next.sentiment_score) / 2
+      
       paths.push({
         source: [current.longitude, current.latitude],
         target: [next.longitude, next.latitude],
-        startTime: current.end_time,
-        endTime: next.start_time
+        timestamp: current.timestamp,
+        nextTimestamp: next.timestamp,
+        sentiment: travelSentiment, // Travel-time sentiment
+        is_traveling: current.is_traveling || next.is_traveling
       })
     }
   }
   
   return paths
+}
+
+/**
+ * Filter increments to only show dots where person stayed >= minConsecutive increments
+ */
+export function filterIncrementsForDots(increments, minConsecutive = 2) {
+  const locationGroups = []
+  let currentGroup = null
+  
+  for (let i = 0; i < increments.length; i++) {
+    const increment = increments[i]
+    
+    // Skip traveling increments for dots
+    if (increment.is_traveling) {
+      if (currentGroup) {
+        locationGroups.push(currentGroup)
+        currentGroup = null
+      }
+      continue
+    }
+    
+    const locationKey = `${increment.latitude.toFixed(6)},${increment.longitude.toFixed(6)}`
+    
+    if (!currentGroup || currentGroup.locationKey !== locationKey) {
+      // Start new group
+      if (currentGroup) {
+        locationGroups.push(currentGroup)
+      }
+      currentGroup = {
+        locationKey,
+        location: {
+          latitude: increment.latitude,
+          longitude: increment.longitude,
+          name: increment.location_name,
+          type: increment.location_type
+        },
+        intervals: [increment],
+        startTime: increment.timestamp
+      }
+    } else {
+      // Add to current group
+      currentGroup.intervals.push(increment)
+    }
+  }
+  
+  // Add last group
+  if (currentGroup) {
+    locationGroups.push(currentGroup)
+  }
+  
+  // Filter groups that have >= minConsecutive increments
+  return locationGroups
+    .filter(group => group.intervals.length >= minConsecutive)
+    .map(group => {
+      // Calculate average sentiment for the stay
+      const avgSentiment = group.intervals.reduce((sum, inc) => sum + inc.sentiment_score, 0) / group.intervals.length
+      const totalDuration = group.intervals.length * 5 // 5 minutes per increment
+      
+      return {
+        location: group.location,
+        intervals: group.intervals,
+        avgSentiment,
+        totalDuration,
+        startTime: group.startTime,
+        endTime: group.intervals[group.intervals.length - 1].timestamp
+      }
+    })
 }
 

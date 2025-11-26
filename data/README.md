@@ -15,9 +15,8 @@ This directory contains all data files and processing scripts for the sentiment 
 
 ## Processing Scripts
 
-- **process_data.py**: Main script to generate synthetic interval data and convert OSM to GeoJSON
-- **convert_expanded.py**: Convert expanded OSM building data to GeoJSON
-- **check_buildings.py**: Utility to check building data coverage
+- **generate_intervals_with_routes.py**: Main script to generate interval data with real Mapbox routes
+- **filter_buildings.py**: Filter buildings to smaller radius for better performance
 
 ## Usage
 
@@ -25,25 +24,37 @@ This directory contains all data files and processing scripts for the sentiment 
 
 ```bash
 cd data
-python process_data.py
+python generate_intervals_with_routes.py
 ```
 
 This will:
-1. Convert OSM building data to GeoJSON format
-2. Generate synthetic 2-week interval data
-3. Save files to the `data/` directory
+1. Generate synthetic 2-week interval data with real Mapbox route paths
+2. Save `intervals.json` to the `data/` directory
+3. Copy to `public/` for the web application
+
+### Filter Buildings (Performance)
+
+To reduce building count for faster loading:
+```bash
+cd data
+python filter_buildings.py
+# This creates buildings_usc_filtered.geojson (1km radius, ~1,093 buildings)
+```
 
 ### Copy to Web App
 
 After processing, copy the following files to `public/` for the web application:
 - `intervals.json`
 - `locations.json`
-- `buildings_usc.geojson`
+- `buildings_usc.geojson` (or `buildings_usc_filtered.geojson` for better performance)
 
 Or use:
 ```bash
 # From project root
 cp data/intervals.json data/locations.json data/buildings_usc.geojson public/
+
+# Or use filtered version for better performance:
+cp data/buildings_usc_filtered.geojson public/buildings_usc.geojson
 ```
 
 ## Data Format
