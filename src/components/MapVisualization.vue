@@ -10,19 +10,19 @@
     
     <!-- Tooltip -->
     <Tooltip
-      v-if="tooltip.visible"
+      v-if="tooltip && tooltip.visible"
       :visible="tooltip.visible"
-      :x="tooltip.x"
-      :y="tooltip.y"
-      :title="tooltip.title"
-      :details="tooltip.details"
+      :x="tooltip.x || 0"
+      :y="tooltip.y || 0"
+      :title="tooltip.title || ''"
+      :details="tooltip.details || {}"
     />
     
-    <!-- Stays Sidebar -->
+    <!-- Stays Sidebar (only in Daily mode) -->
     <StaysSidebar 
-      v-if="useIncrements ? increments.length > 0 : intervals.length > 0"
+      v-if="viewMode === 'daily' && (useIncrements ? increments.length > 0 : filteredIntervals.length > 0)"
       :increments="useIncrements ? increments : []"
-      :intervals="!useIncrements ? intervals : []"
+      :intervals="!useIncrements ? filteredIntervals : []"
       :current-time-index="currentTimeIndex"
       :time-increments="timeIncrements"
       @jump-to-time="handleJumpToTime"
@@ -31,9 +31,9 @@
     <!-- Legend -->
     <Legend />
     
-    <!-- Timeline Slider (for Daily mode with either increments or intervals) -->
+    <!-- Timeline Slider (only for Daily mode, not Lifetime) -->
     <TimelineSlider
-      v-if="viewMode === 'daily' && ((useIncrements && increments.length > 0) || (!useIncrements && intervals.length > 0))"
+      v-if="viewMode === 'daily' && filteredIntervals.length > 0"
       :current-time="currentTime"
       :start-time="startTime"
       :end-time="endTime"
@@ -68,6 +68,25 @@
             </button>
           </div>
           
+          <!-- Date selector for Daily mode -->
+          <div v-if="viewMode === 'daily' && availableDates.length > 0" class="mt-3">
+            <label for="date-select" class="form-label">Select Date:</label>
+            <select 
+              id="date-select" 
+              class="form-select" 
+              :value="selectedDate ? formatDateForInput(selectedDate) : ''"
+              @change="handleDateChange($event)"
+            >
+              <option 
+                v-for="date in availableDates" 
+                :key="formatDateForInput(date)"
+                :value="formatDateForInput(date)"
+              >
+                {{ date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
+              </option>
+            </select>
+          </div>
+          
         </div>
       </div>
     </div>
@@ -75,7 +94,7 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { Deck } from '@deck.gl/core'
 import { ScatterplotLayer, PolygonLayer, PathLayer } from '@deck.gl/layers'
 import mapboxgl from 'mapbox-gl'
@@ -90,7 +109,8 @@ import {
   aggregateIntervalsByLocation,
   aggregateByTimeBuckets,
   getBuildingSentiment,
-  createTravelPaths
+  createTravelPaths,
+  filterIntervalsByDate
 } from '../utils/dataLoader'
 import { createStripedDotData, createStripedPolygonData } from '../utils/stripedVisualization'
 
@@ -112,12 +132,14 @@ export default {
     const loading = ref(true)
     const hoveredObject = ref(null)
     const hoveredLocation = ref(null)
+    const selectedDate = ref(null) // Selected date for daily view
     const tooltip = ref({
       visible: false,
       x: 0,
       y: 0,
       title: '',
-      details: {}
+      details: {},
+      locked: false // Whether tooltip is locked (clicked) or just hovered
     })
     // Timeline slider state
     const currentTimeIndex = ref(0)
@@ -125,13 +147,68 @@ export default {
     let deck = null
     let map = null
 
-    // Generate 5-minute time increments for intervals
-    const timeIncrements = computed(() => {
+    // Filter intervals by selected date for daily view
+    const filteredIntervals = computed(() => {
+      if (viewMode.value === 'daily' && selectedDate.value) {
+        return filterIntervalsByDate(intervals.value, selectedDate.value)
+      }
+      return intervals.value
+    })
+    
+    // Get available dates from intervals (using local timezone)
+    const availableDates = computed(() => {
       if (intervals.value.length === 0) return []
+      const dates = new Set()
+      intervals.value.forEach(interval => {
+        const date = new Date(interval.start_time)
+        // Use local date components to avoid timezone issues
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const dateStr = `${year}-${month}-${day}`
+        dates.add(dateStr)
+      })
+      // Create dates at midnight in local timezone
+      return Array.from(dates).sort().map(dateStr => {
+        const [year, month, day] = dateStr.split('-').map(Number)
+        return new Date(year, month - 1, day, 0, 0, 0, 0) // Local midnight
+      })
+    })
+    
+    // Helper function to format date for input (YYYY-MM-DD in local time)
+    const formatDateForInput = (date) => {
+      if (!date || !(date instanceof Date) || isNaN(date.getTime())) return ''
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    
+    // Handle date change
+    const handleDateChange = (event) => {
+      const [year, month, day] = event.target.value.split('-').map(Number)
+      selectedDate.value = new Date(year, month - 1, day, 0, 0, 0, 0)
+      currentTimeIndex.value = 0
+      // Force layer update after date change
+      nextTick(() => {
+        updateDeckLayers()
+      })
+    }
+    
+    // Initialize selected date to first available date
+    watch(availableDates, (dates) => {
+      if (dates.length > 0 && (!selectedDate.value || isNaN(selectedDate.value.getTime()))) {
+        selectedDate.value = dates[0]
+      }
+    }, { immediate: true })
+    
+    // Generate 5-minute time increments for filtered intervals
+    const timeIncrements = computed(() => {
+      if (filteredIntervals.value.length === 0) return []
       
       const increments = []
-      const start = new Date(intervals.value[0].start_time)
-      const end = new Date(intervals.value[intervals.value.length - 1].end_time)
+      const start = new Date(filteredIntervals.value[0].start_time)
+      const end = new Date(filteredIntervals.value[filteredIntervals.value.length - 1].end_time)
       
       // Generate 5-minute increments
       let current = new Date(start)
@@ -143,17 +220,17 @@ export default {
       return increments
     })
     
-    // Computed properties for timeline
+    // Computed properties for timeline (using filtered intervals)
     const currentTime = computed(() => {
       if (useIncrements.value && increments.value.length > 0) {
         const index = Math.min(currentTimeIndex.value, increments.value.length - 1)
         return increments.value[index]?.timestamp || new Date()
-      } else if (intervals.value.length > 0 && timeIncrements.value.length > 0) {
+      } else if (filteredIntervals.value.length > 0 && timeIncrements.value.length > 0) {
         const index = Math.min(currentTimeIndex.value, timeIncrements.value.length - 1)
         return timeIncrements.value[index] || new Date()
-      } else if (intervals.value.length > 0) {
-        const index = Math.min(currentTimeIndex.value, intervals.value.length - 1)
-        return intervals.value[index]?.start_time || new Date()
+      } else if (filteredIntervals.value.length > 0) {
+        const index = Math.min(currentTimeIndex.value, filteredIntervals.value.length - 1)
+        return filteredIntervals.value[index]?.start_time || new Date()
       }
       return new Date()
     })
@@ -161,8 +238,8 @@ export default {
     const startTime = computed(() => {
       if (useIncrements.value && increments.value.length > 0) {
         return increments.value[0]?.timestamp || new Date()
-      } else if (intervals.value.length > 0) {
-        return intervals.value[0]?.start_time || new Date()
+      } else if (filteredIntervals.value.length > 0) {
+        return filteredIntervals.value[0]?.start_time || new Date()
       }
       return new Date()
     })
@@ -170,8 +247,8 @@ export default {
     const endTime = computed(() => {
       if (useIncrements.value && increments.value.length > 0) {
         return increments.value[increments.value.length - 1]?.timestamp || new Date()
-      } else if (intervals.value.length > 0) {
-        return intervals.value[intervals.value.length - 1]?.end_time || new Date()
+      } else if (filteredIntervals.value.length > 0) {
+        return filteredIntervals.value[filteredIntervals.value.length - 1]?.end_time || new Date()
       }
       return new Date()
     })
@@ -179,11 +256,11 @@ export default {
     const maxTimeIndex = computed(() => {
       if (useIncrements.value && increments.value.length > 0) {
         return Math.max(0, increments.value.length - 1)
-      } else if (intervals.value.length > 0 && timeIncrements.value.length > 0) {
+      } else if (filteredIntervals.value.length > 0 && timeIncrements.value.length > 0) {
         // For intervals, use 5-minute increments
         return Math.max(0, timeIncrements.value.length - 1)
-      } else if (intervals.value.length > 0) {
-        return Math.max(0, intervals.value.length - 1)
+      } else if (filteredIntervals.value.length > 0) {
+        return Math.max(0, filteredIntervals.value.length - 1)
       }
       return 0
     })
@@ -193,13 +270,13 @@ export default {
       if (useIncrements.value && increments.value.length > 0) {
         const index = Math.min(currentTimeIndex.value, increments.value.length - 1)
         return increments.value[index]?.sentiment_score || null
-      } else if (intervals.value.length > 0 && timeIncrements.value.length > 0) {
+      } else if (filteredIntervals.value.length > 0 && timeIncrements.value.length > 0) {
         // Find which interval the current time falls into
         const currentTime = timeIncrements.value[currentTimeIndex.value]
         if (!currentTime) return null
         
         // Find the interval that contains this time
-        for (const interval of intervals.value) {
+        for (const interval of filteredIntervals.value) {
           const start = new Date(interval.start_time)
           const end = new Date(interval.end_time)
           if (currentTime >= start && currentTime <= end) {
@@ -238,13 +315,13 @@ export default {
       } else if (intervals.value.length > 0) {
         // Use legacy interval format
         if (viewMode.value === 'daily') {
-          const locations = aggregateIntervalsByLocation(intervals.value)
-          const paths = createTravelPaths(intervals.value)
+          // Use filtered intervals for daily view
+          const locations = aggregateIntervalsByLocation(filteredIntervals.value)
+          const paths = createTravelPaths(filteredIntervals.value)
           return { locations, paths }
         } else {
-          const locations = aggregateByTimeBuckets(intervals.value, 3)
-          const paths = createTravelPaths(intervals.value)
-          return { locations, paths }
+          // Lifetime view: no dots or paths, only buildings
+          return { locations: [], paths: [] }
         }
       }
       return { locations: [], paths: [] }
@@ -259,6 +336,9 @@ export default {
 
       console.log('Calculating building sentiment for', buildings.value.features.length, 'buildings...')
       const startTime = performance.now()
+      
+      // For lifetime mode, group by time buckets; for daily mode, simple aggregation
+      const groupByTimeBucket = viewMode.value === 'lifetime'
       
       // Only process buildings that might have nearby intervals
       // Create a spatial index for faster lookup
@@ -275,14 +355,20 @@ export default {
       for (let i = 0; i < buildings.value.features.length; i += batchSize) {
         const batch = buildings.value.features.slice(i, i + batchSize)
         batch.forEach(building => {
-          const result = getBuildingSentiment(building, intervals.value, 0.0003) // ~33 meters
+          const result = getBuildingSentiment(building, intervals.value, 0.0003, groupByTimeBucket) // ~33 meters
           if (result !== null) {
             // Only include buildings with sentiment data to reduce rendering load
-            processedBuildings.push({
+            const buildingData = {
               ...building,
               sentiment: result.sentiment,
               intervals: result.intervals // Store intervals for striping
-            })
+            }
+            // Store time buckets for lifetime mode tooltips
+            if (groupByTimeBucket && result.timeBuckets) {
+              buildingData.timeBuckets = result.timeBuckets
+              buildingData.hasMultipleBuckets = result.hasMultipleBuckets
+            }
+            processedBuildings.push(buildingData)
           }
         })
       }
@@ -298,22 +384,106 @@ export default {
       }
     }
 
-    // Handle dot hover for tooltips
-    const handleDotHover = (info) => {
-      console.log('handleDotHover called', { hasObject: !!info.object, x: info.x, y: info.y, layer: info.layer?.id })
-      if (info && info.object && info.x !== undefined && info.y !== undefined) {
-        hoveredObject.value = info.object
-        const obj = info.object
+    // Handle building hover/click for lifetime mode
+    const handleBuildingHover = (info, building) => {
+      if (viewMode.value !== 'lifetime') return
+      
+      if (info && building && building.timeBuckets) {
+        if (map) map.getCanvas().style.cursor = 'pointer'
+        // Show tooltip with time-of-day breakdown
+        const details = {}
+        building.timeBuckets.forEach(bucket => {
+          details[bucket.timeRange] = {
+            sentiment: bucket.avgSentiment.toFixed(2),
+            count: bucket.count,
+            duration: `${Math.round(bucket.totalDuration)} min`
+          }
+        })
         
-        // Get tooltip details
-        const details = {
-          location_name: obj.location?.name || 'Unknown',
-          location_type: obj.location?.type || 'Unknown'
+        tooltip.value = {
+          visible: true,
+          x: info.x,
+          y: info.y,
+          title: building.properties?.name || 'Building',
+          details: details,
+          locked: false
         }
+      } else {
+        if (map) map.getCanvas().style.cursor = 'default'
+        if (!tooltip.value?.locked) {
+          tooltip.value = { ...tooltip.value, visible: false }
+        }
+      }
+    }
+    
+    const handleBuildingClick = (info, building) => {
+      if (viewMode.value !== 'lifetime') return
+      
+      if (building && building.timeBuckets) {
+        const details = {}
+        building.timeBuckets.forEach(bucket => {
+          details[bucket.timeRange] = {
+            sentiment: bucket.avgSentiment.toFixed(2),
+            count: bucket.count,
+            duration: `${Math.round(bucket.totalDuration)} min`
+          }
+        })
         
-        // Check if this is a striped dot with multiple intervals
-        if (obj.intervals && Array.isArray(obj.intervals) && obj.intervals.length > 1) {
-          // Multiple intervals - show breakdown
+        // Toggle lock state
+        if (tooltip.value?.visible && tooltip.value?.title === (building.properties?.name || 'Building')) {
+          tooltip.value = { ...tooltip.value, locked: !tooltip.value.locked }
+        } else {
+          tooltip.value = {
+            visible: true,
+            x: info.x,
+            y: info.y,
+            title: building.properties?.name || 'Building',
+            details: details,
+            locked: true
+          }
+        }
+      }
+    }
+    
+    // Handle dot hover for tooltips
+    // Helper function to build tooltip details from object
+    const buildTooltipDetails = (obj) => {
+      const details = {
+        location_name: obj.location?.name || 'Unknown',
+        location_type: obj.location?.type || 'Unknown'
+      }
+      
+      // Check if this is a striped dot with multiple intervals
+      if (obj.intervals && Array.isArray(obj.intervals) && obj.intervals.length > 1) {
+        // Multiple intervals - show breakdown
+        details.intervals = obj.intervals.map(interval => ({
+          start_time: interval.start_time,
+          end_time: interval.end_time,
+          sentiment_score: interval.sentiment_score,
+          activity: interval.activity,
+          duration_minutes: interval.duration_minutes
+        }))
+        details.avgSentiment = obj.avgSentiment || obj.sentiment
+        details.totalDuration = obj.totalDuration || obj.intervals.reduce((sum, i) => sum + i.duration_minutes, 0)
+      } else if (obj.interval) {
+        // Single interval from expanded view
+        details.sentiment_score = obj.interval.sentiment_score
+        details.activity = obj.interval.activity
+        details.duration_minutes = obj.interval.duration_minutes
+        details.start_time = obj.interval.start_time
+        details.end_time = obj.interval.end_time
+      } else if (obj.intervals && obj.intervals.length === 1) {
+        // Single interval in array
+        const interval = obj.intervals[0]
+        details.sentiment_score = interval.sentiment_score
+        details.activity = interval.activity
+        details.duration_minutes = interval.duration_minutes
+        details.start_time = interval.start_time
+        details.end_time = interval.end_time
+      } else {
+        // Fallback for aggregated data
+        details.avgSentiment = obj.avgSentiment || obj.sentiment
+        if (obj.intervals && obj.intervals.length > 0) {
           details.intervals = obj.intervals.map(interval => ({
             start_time: interval.start_time,
             end_time: interval.end_time,
@@ -321,82 +491,146 @@ export default {
             activity: interval.activity,
             duration_minutes: interval.duration_minutes
           }))
-          details.avgSentiment = obj.avgSentiment || obj.sentiment
-          details.totalDuration = obj.totalDuration || obj.intervals.reduce((sum, i) => sum + i.duration_minutes, 0)
-        } else if (obj.interval) {
-          // Single interval from expanded view
-          details.sentiment_score = obj.interval.sentiment_score
-          details.activity = obj.interval.activity
-          details.duration_minutes = obj.interval.duration_minutes
-          details.start_time = obj.interval.start_time
-          details.end_time = obj.interval.end_time
-        } else if (obj.intervals && obj.intervals.length === 1) {
-          // Single interval in array
-          const interval = obj.intervals[0]
-          details.sentiment_score = interval.sentiment_score
-          details.activity = interval.activity
-          details.duration_minutes = interval.duration_minutes
-          details.start_time = interval.start_time
-          details.end_time = interval.end_time
-        } else {
-          // Fallback for aggregated data
-          details.avgSentiment = obj.avgSentiment || obj.sentiment
-          if (obj.intervals && obj.intervals.length > 0) {
-            details.intervals = obj.intervals.map(interval => ({
-              start_time: interval.start_time,
-              end_time: interval.end_time,
-              sentiment_score: interval.sentiment_score,
-              activity: interval.activity,
-              duration_minutes: interval.duration_minutes
-            }))
-          }
+        }
+      }
+      
+      if (viewMode.value === 'lifetime' && obj.timeBucket !== undefined) {
+        details.timeBucket = obj.timeBucket
+      }
+      
+      return details
+    }
+    
+    const handleDotHover = (info) => {
+      // Show tooltip on hover, but only if not locked to a different dot
+      if (info && info.object && info.x !== undefined && info.y !== undefined) {
+        map.getCanvas().style.cursor = 'pointer'
+        
+        // Get the actual dot object
+        const dotObj = info.object.dot || info.object
+        const position = dotObj.position || (info.object.position ? 
+          [info.object.position[0], info.object.position[1]] : 
+          (info.coordinate ? [info.coordinate[0], info.coordinate[1]] : null))
+        
+        if (!position) return
+        
+        // Check if tooltip is locked to a different dot
+        const currentTooltipPosition = tooltip.value?.dotPosition
+        const isLockedToDifferentDot = tooltip.value?.locked && currentTooltipPosition &&
+          (Math.abs(currentTooltipPosition[0] - position[0]) >= 0.00001 ||
+           Math.abs(currentTooltipPosition[1] - position[1]) >= 0.00001)
+        
+        // If locked to different dot, don't show hover tooltip
+        if (isLockedToDifferentDot) {
+          return
         }
         
-        if (viewMode.value === 'lifetime' && obj.timeBucket !== undefined) {
-          details.timeBucket = obj.timeBucket
-        }
-        
-        // Get coordinates relative to viewport for tooltip
-        const canvas = document.getElementById('deck-overlay-canvas')
-        const rect = canvas ? canvas.getBoundingClientRect() : null
-        const tooltipX = rect ? info.x + rect.left : info.x
-        const tooltipY = rect ? info.y + rect.top : info.y
+        // Show tooltip on hover (not locked)
+        const details = buildTooltipDetails(dotObj)
+        const tooltipX = info.x
+        const tooltipY = info.y
         
         tooltip.value = {
           visible: true,
           x: tooltipX,
           y: tooltipY,
-          title: obj.location?.name || 'Location',
-          details: details
+          title: dotObj.location?.name || dotObj.location?.type || 'Location',
+          details: { ...details },
+          dotPosition: position,
+          locked: tooltip.value?.locked || false // Preserve lock state
         }
         
-        console.log('Tooltip set:', { visible: true, x: tooltipX, y: tooltipY, title: tooltip.value.title })
+        // Expand cluster on hover if it has multiple intervals
+        if (dotObj.intervals && Array.isArray(dotObj.intervals) && dotObj.intervals.length > 1) {
+          // Only expand if not already expanded or if locked
+          if (!hoveredLocation.value || 
+              !hoveredLocation.value.position ||
+              Math.abs(hoveredLocation.value.position[0] - position[0]) >= 0.00001 ||
+              Math.abs(hoveredLocation.value.position[1] - position[1]) >= 0.00001) {
+            hoveredLocation.value = {
+              ...dotObj,
+              position: position
+            }
+            updateDeckLayers()
+          }
+        }
       } else {
-        hoveredObject.value = null
-        tooltip.value.visible = false
+        map.getCanvas().style.cursor = 'default'
+        // Hide tooltip on mouse leave, but only if not locked
+        if (tooltip.value && !tooltip.value.locked) {
+          tooltip.value = { ...tooltip.value, visible: false }
+          // Collapse cluster if not locked
+          hoveredLocation.value = null
+          updateDeckLayers()
+        }
       }
     }
     
-    // Handle dot click to expand clusters
+    // Handle dot click to show tooltip or expand clusters
     const handleDotClick = (info) => {
-      console.log('handleDotClick called', { object: info.object, layer: info.layer?.id })
-      if (!info.object) return
+      console.log('handleDotClick called', { 
+        object: info.object, 
+        layer: info.layer?.id,
+        x: info.x,
+        y: info.y,
+        hasObject: !!info.object
+      })
+      if (!info.object || info.x === undefined || info.y === undefined) {
+        console.warn('handleDotClick: Missing object or coordinates', { 
+          hasObject: !!info.object, 
+          x: info.x, 
+          y: info.y 
+        })
+        return
+      }
       
       // Get the actual dot object (might be nested in dot property for expanded view)
       const dotObj = info.object.dot || info.object
+      console.log('Dot object:', dotObj)
+      
+      // Get position from the object
+      const position = dotObj.position || (info.object.position ? 
+        [info.object.position[0], info.object.position[1]] : 
+        (info.coordinate ? [info.coordinate[0], info.coordinate[1]] : null))
+      
+      if (!position) {
+        console.warn('No position found for dot', dotObj)
+        return
+      }
+      
+      console.log('Dot position:', position)
+      
+      // Check if clicking the same dot that already has tooltip open
+      const currentTooltipPosition = tooltip.value?.dotPosition
+      const isSameDot = currentTooltipPosition && 
+        Math.abs(currentTooltipPosition[0] - position[0]) < 0.00001 &&
+        Math.abs(currentTooltipPosition[1] - position[1]) < 0.00001
+      
+      // Toggle lock state on click
+      if (isSameDot && tooltip.value?.visible) {
+        const timeSinceLastClick = Date.now() - (tooltip.value.lastClickTime || 0)
+        if (timeSinceLastClick > 100) {
+          if (tooltip.value.locked) {
+            // Unlock and close
+            console.log('Unlocking and closing tooltip')
+            tooltip.value = { ...tooltip.value, visible: false, locked: false, lastClickTime: Date.now() }
+            hoveredLocation.value = null
+            updateDeckLayers()
+          } else {
+            // Lock it in place
+            console.log('Locking tooltip in place')
+            tooltip.value = { ...tooltip.value, locked: true, lastClickTime: Date.now() }
+          }
+          return
+        } else {
+          // Too soon after last click, ignore (prevent double-firing)
+          console.log('Ignoring duplicate click (too soon after last)')
+          return
+        }
+      }
       
       // Check if this dot has multiple intervals (is a cluster)
       if (dotObj.intervals && Array.isArray(dotObj.intervals) && dotObj.intervals.length > 1) {
-        // Get position from the object
-        const position = dotObj.position || (info.object.position ? 
-          [info.object.position[0], info.object.position[1]] : 
-          (info.coordinate ? [info.coordinate[0], info.coordinate[1]] : null))
-        
-        if (!position) {
-          console.warn('No position found for dot', dotObj)
-          return
-        }
-        
         // Toggle expansion - check if this location is already expanded
         if (hoveredLocation.value && 
             hoveredLocation.value.position && 
@@ -412,12 +646,62 @@ export default {
             position: position
           }
           console.log('Expanding cluster at', position, 'with', dotObj.intervals.length, 'intervals')
+          console.log('hoveredLocation.value set to:', hoveredLocation.value)
         }
         // Force layer update to show expanded view
+        console.log('Calling updateDeckLayers()')
         updateDeckLayers()
-      } else {
-        console.log('Dot clicked but has only', dotObj.intervals?.length || 0, 'intervals')
+        console.log('updateDeckLayers() completed')
       }
+      
+      // Show tooltip for this dot (always show, regardless of cluster expansion)
+      console.log('About to set tooltip for dot')
+      const details = buildTooltipDetails(dotObj)
+      const tooltipX = info.x
+      const tooltipY = info.y
+      
+      console.log('Setting tooltip:', {
+        visible: true,
+        x: tooltipX,
+        y: tooltipY,
+        title: dotObj.location?.name || dotObj.location?.type || 'Location',
+        details: details,
+        dotPosition: position
+      })
+      
+      // Lock tooltip on click
+      tooltip.value = {
+        visible: true,
+        x: tooltipX,
+        y: tooltipY,
+        title: dotObj.location?.name || dotObj.location?.type || 'Location',
+        details: { ...details },
+        dotPosition: position, // Store position to detect same dot clicks
+        locked: true, // Lock it in place on click
+        lastClickTime: Date.now() // Store timestamp to prevent double-firing
+      }
+      
+      // Lock cluster expansion on click (if it has multiple intervals)
+      if (dotObj.intervals && Array.isArray(dotObj.intervals) && dotObj.intervals.length > 1) {
+        hoveredLocation.value = {
+          ...dotObj,
+          position: position
+        }
+        console.log('Locking cluster expansion at', position, 'with', dotObj.intervals.length, 'intervals')
+        updateDeckLayers()
+      }
+      
+      // Lock cluster expansion on click
+      if (dotObj.intervals && Array.isArray(dotObj.intervals) && dotObj.intervals.length > 1) {
+        hoveredLocation.value = {
+          ...dotObj,
+          position: position
+        }
+        updateDeckLayers()
+      }
+      
+      console.log('Tooltip value after setting:', tooltip.value)
+      console.log('Tooltip visible?', tooltip.value.visible)
     }
 
     // Create layers for deck.gl
@@ -429,12 +713,47 @@ export default {
         buildingsWithSentiment.value.forEach((building, idx) => {
           // Use stored intervals from building calculation
           const buildingIntervals = building.intervals || []
+          const isLifetime = viewMode.value === 'lifetime'
+          const hasMultipleBuckets = building.hasMultipleBuckets && building.timeBuckets && building.timeBuckets.length > 1
           
-          if (buildingIntervals.length > 1 && viewMode.value === 'daily') {
-            // Create striped polygon for multiple intervals
+          if (isLifetime && hasMultipleBuckets) {
+            // Lifetime mode: show striped pattern for multiple time buckets
+            building.timeBuckets.forEach((bucket, bucketIdx) => {
+              const color = getSentimentColor(bucket.avgSentiment)
+              layersList.push(
+                new PolygonLayer({
+                  id: `building-lifetime-striped-${idx}-${bucketIdx}`,
+                  data: [building],
+                  getPolygon: d => d.geometry.coordinates[0],
+                  getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.5)],
+                  getLineColor: [150, 150, 150, 100],
+                  lineWidthMinPixels: 0.5,
+                  pickable: true, // Enable hover for lifetime mode
+                  opacity: 0.5,
+                  filled: true,
+                  stroked: false,
+                  updateTriggers: {
+                    getFillColor: [viewMode.value, bucket.bucket]
+                  },
+                  onClick: (info) => {
+                    if (info.object) {
+                      handleBuildingClick(info, building)
+                    }
+                  },
+                  onHover: (info) => {
+                    if (info.object && info.object === building) {
+                      handleBuildingHover(info, building)
+                    } else {
+                      handleBuildingHover(null, null)
+                    }
+                  }
+                })
+              )
+            })
+          } else if (buildingIntervals.length > 1 && viewMode.value === 'daily') {
+            // Daily mode: striped for multiple intervals
             const stripedData = createStripedPolygonData(building, buildingIntervals)
             if (stripedData && stripedData.buckets.length > 1) {
-              // Render each time bucket as a separate semi-transparent layer for striping effect
               stripedData.buckets.forEach((bucket, bucketIdx) => {
                 const color = getSentimentColor(bucket.avgSentiment)
                 layersList.push(
@@ -445,7 +764,7 @@ export default {
                     getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.4)],
                     getLineColor: [150, 150, 150, 100],
                     lineWidthMinPixels: 0.5,
-                    pickable: true,
+                    pickable: false,
                     opacity: 0.4,
                     filled: true,
                     stroked: false,
@@ -456,7 +775,6 @@ export default {
                 )
               })
             } else {
-              // Single sentiment - render normally
               const color = getSentimentColor(building.sentiment)
               layersList.push(
                 new PolygonLayer({
@@ -466,7 +784,7 @@ export default {
                   getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.6)],
                   getLineColor: [150, 150, 150, 150],
                   lineWidthMinPixels: 1,
-                  pickable: true,
+                  pickable: false,
                   opacity: 0.5,
                   updateTriggers: {
                     getFillColor: [viewMode.value]
@@ -485,11 +803,23 @@ export default {
                 getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.6)],
                 getLineColor: [150, 150, 150, 150],
                 lineWidthMinPixels: 1,
-                pickable: true,
+                pickable: isLifetime, // Pickable in lifetime mode for hover
                 opacity: 0.5,
                 updateTriggers: {
                   getFillColor: [viewMode.value]
-                }
+                },
+                onClick: isLifetime ? (info) => {
+                  if (info.object) {
+                    handleBuildingClick(info, building)
+                  }
+                } : undefined,
+                onHover: isLifetime ? (info) => {
+                  if (info.object && info.object === building) {
+                    handleBuildingHover(info, building)
+                  } else {
+                    handleBuildingHover(null, null)
+                  }
+                } : undefined
               })
             )
           }
@@ -636,9 +966,10 @@ export default {
         }
       }
 
-      // Sentiment dots layer (with striped support for multiple intervals)
-      console.log('Creating dots layer, locations count:', processedData.value.locations.length)
-      if (processedData.value.locations.length > 0) {
+      // Sentiment dots layer (with striped support for multiple intervals) - only in daily mode
+      if (viewMode.value === 'daily') {
+        console.log('Creating dots layer, locations count:', processedData.value.locations.length)
+        if (processedData.value.locations.length > 0) {
         const dotData = processedData.value.locations.map(loc => {
           const stripedData = createStripedDotData(loc.location, loc.intervals)
           return {
@@ -667,8 +998,13 @@ export default {
               pickable: true,
               radiusMinPixels: 8,
               radiusMaxPixels: 8,
-              onHover: (info) => handleDotHover(info),
-              onClick: (info) => handleDotClick(info)
+              onHover: (info) => {
+                handleDotHover(info)
+              },
+              onClick: (info) => {
+                console.log('Simple dot onClick:', { hasObject: !!info.object, x: info.x, y: info.y })
+                handleDotClick(info)
+              }
             })
           )
         }
@@ -681,6 +1017,14 @@ export default {
               hoveredLocation.value.position &&
               Math.abs(hoveredLocation.value.position[0] - dot.position[0]) < 0.00001 &&
               Math.abs(hoveredLocation.value.position[1] - dot.position[1]) < 0.00001
+            
+            console.log('Checking expansion for dot:', {
+              idx,
+              dotPosition: dot.position,
+              hoveredPosition: hoveredLocation.value?.position,
+              isHovered,
+              intervalsCount: dot.intervals?.length
+            })
             
             if (isHovered && dot.intervals.length > 1) {
               // Expanded view: show each interval as separate dot
@@ -730,11 +1074,10 @@ export default {
               radiusMinPixels: 8,
               radiusMaxPixels: 10,
               onHover: (info) => {
-                if (info.object) {
-                  handleDotHover(info)
-                }
+                handleDotHover(info)
               },
               onClick: (info) => {
+                console.log('Striped dot onClick:', { hasObject: !!info.object, x: info.x, y: info.y })
                 if (info.object) {
                   handleDotClick(info)
                 }
@@ -901,6 +1244,35 @@ export default {
         }, 100)
       }
     }, { deep: false })
+    
+    // Update layers when filtered intervals change (date selection in daily view)
+    watch([filteredIntervals, selectedDate, viewMode], () => {
+      if (viewMode.value === 'daily') {
+        if (filteredIntervals.value.length > 0) {
+          // Reset timeline to start when date changes
+          currentTimeIndex.value = 0
+        }
+        // Update layers to show new date's data
+        nextTick(() => {
+          updateDeckLayers()
+        })
+      }
+    }, { deep: false })
+    
+    // Also watch processedData to ensure layers update when data changes
+    watch([processedData], () => {
+      if (deck && map && processedData.value) {
+        console.log('processedData changed, updating layers. Locations:', processedData.value.locations?.length, 'Paths:', processedData.value.paths?.length)
+        nextTick(() => {
+          updateDeckLayers()
+        })
+      }
+    }, { deep: true })
+    
+    // Watch tooltip changes for debugging
+    watch(() => tooltip.value?.visible, (newVal) => {
+      console.log('Tooltip visible changed:', newVal, 'full tooltip:', tooltip.value)
+    })
 
     // Watch for building sentiment changes
     watch([buildingsWithSentiment], () => {
@@ -926,7 +1298,7 @@ export default {
         // Create a separate canvas for deck.gl that overlays on top of Mapbox
         const deckCanvas = document.createElement('canvas')
         deckCanvas.id = 'deck-overlay-canvas'
-        // Use pointer-events: auto for hover, but pass wheel events to map for zoom
+        // Use pointer-events: auto for hover and clicks on pickable objects
         deckCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; z-index: 1;'
         const containerRect = mapContainer.value.getBoundingClientRect()
         deckCanvas.width = containerRect.width
@@ -992,8 +1364,18 @@ export default {
         })
         
         deckCanvas.addEventListener('mousedown', (e) => {
+          // Check immediately if we're over a pickable object
+          let isOverPickable = false
+          if (deck) {
+            const rect = deckCanvas.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const y = e.clientY - rect.top
+            const pickInfo = deck.pickObject({ x, y })
+            isOverPickable = !!(pickInfo && pickInfo.object)
+          }
+          
           // Only start dragging if NOT over a pickable object
-          if (!isOverPickableObject) {
+          if (!isOverPickable) {
             isDragging = true
             lastMouseX = e.clientX
             lastMouseY = e.clientY
@@ -1009,8 +1391,11 @@ export default {
               })
               mapCanvas.dispatchEvent(mouseEvent)
             }
+          } else {
+            // Over pickable object - let deck.gl handle the click
+            // Don't prevent default, don't start dragging
+            console.log('Click on pickable object, letting deck.gl handle it')
           }
-          // If over pickable object, let deck.gl handle it (don't prevent default)
         })
         
         deckCanvas.addEventListener('mouseup', (e) => {
@@ -1058,38 +1443,19 @@ export default {
           layers: [],
           onHover: (info) => {
             // Handle hover at deck level - this is called for all layers
+            // Tooltips are now click-based, so we don't close them on hover
+            // This handler just manages cursor
             if (info.object) {
               map.getCanvas().style.cursor = 'pointer'
-              // Temporarily enable pointer events on deck canvas for hover
-              const deckCanvas = document.getElementById('deck-overlay-canvas')
-              if (deckCanvas) {
-                deckCanvas.style.pointerEvents = 'auto'
-              }
-              // Call handleDotHover for any sentiment dot layer
-              if (info.layer && info.layer.id && (
-                info.layer.id.includes('sentiment-dot') || 
-                info.layer.id.includes('sentiment-dot-simple') ||
-                info.layer.id.includes('sentiment-dot-striped') ||
-                info.layer.id.includes('sentiment-dot-expanded')
-              )) {
-                handleDotHover(info)
-              }
             } else {
               map.getCanvas().style.cursor = 'default'
-              // Hide tooltip when not hovering over any object
-              hoveredObject.value = null
-              tooltip.value.visible = false
             }
+            // Don't close tooltips on hover - they're click-based now
           },
           onClick: (info) => {
-            // Handle clicks for expanding clusters
-            if (info.object && info.layer && info.layer.id && (
-              info.layer.id.includes('sentiment-dot') ||
-              info.layer.id.includes('sentiment-dot-striped') ||
-              info.layer.id.includes('sentiment-dot-expanded')
-            )) {
-              handleDotClick(info)
-            }
+            // Don't handle clicks here - let layer-level handlers do it
+            // This prevents double-firing of click events
+            // Layer-level onClick handlers will call handleDotClick
           },
           onError: (error) => {
             console.error('Deck.gl error:', error)
@@ -1224,6 +1590,63 @@ export default {
         loading.value = false
       }
     }
+    
+    // Add click-outside handler to close tooltip
+    // Only fires on actual clicks, not mouse movements
+    const handleClickOutside = (event) => {
+      // Only handle actual click events, not mouse movements
+      if (event.type !== 'click') return
+      
+      if (tooltip.value?.visible) {
+        // Check if click is outside tooltip
+        const tooltipElement = document.querySelector('.tooltip')
+        if (tooltipElement && !tooltipElement.contains(event.target)) {
+          // Check if click is on the deck canvas (map area)
+          const deckCanvas = document.getElementById('deck-overlay-canvas')
+          const isClickOnMap = deckCanvas && (
+            event.target === deckCanvas || 
+            deckCanvas.contains(event.target)
+          )
+          
+          // Check if click is on a pickable object (dot) - if so, don't close
+          // The dot's own click handler will handle toggling
+          if (deck && isClickOnMap) {
+            const rect = deckCanvas.getBoundingClientRect()
+            const x = event.clientX - rect.left
+            const y = event.clientY - rect.top
+            const pickInfo = deck.pickObject({ x, y })
+            const isClickOnDot = !!(pickInfo && pickInfo.object && 
+              pickInfo.layer && pickInfo.layer.id && 
+              pickInfo.layer.id.includes('sentiment-dot'))
+            
+            // Only close if clicking on map (not on a dot and not on tooltip)
+            if (!isClickOnDot) {
+              console.log('Click outside tooltip and not on dot - closing tooltip')
+              tooltip.value = { ...tooltip.value, visible: false }
+              hoveredLocation.value = null
+              updateDeckLayers()
+            }
+          } else if (!isClickOnMap) {
+            // Click is outside both tooltip and map - close tooltip
+            console.log('Click outside tooltip and map - closing tooltip')
+            tooltip.value = { ...tooltip.value, visible: false }
+            hoveredLocation.value = null
+            updateDeckLayers()
+          }
+        }
+      }
+    }
+    
+    // Add click listener after mount (only for clicks, not mouse movements)
+    onMounted(() => {
+      // Use capture phase to catch clicks before they bubble
+      document.addEventListener('click', handleClickOutside, true)
+    })
+    
+    // Cleanup on unmount
+    onUnmounted(() => {
+      document.removeEventListener('click', handleClickOutside, true)
+    })
 
     return {
       mapContainer,
@@ -1235,6 +1658,9 @@ export default {
       useIncrements,
       increments,
       intervals,
+      filteredIntervals,
+      selectedDate,
+      availableDates,
       currentTimeIndex,
       currentTime,
       startTime,
@@ -1242,7 +1668,9 @@ export default {
       maxTimeIndex,
       timeIncrements,
       currentSentiment,
-      handleJumpToTime
+      handleJumpToTime,
+      formatDateForInput,
+      handleDateChange
     }
   }
 }

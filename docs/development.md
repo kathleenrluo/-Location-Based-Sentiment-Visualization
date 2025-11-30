@@ -1,5 +1,88 @@
 # Development Log
 
+## Week's Worth of Data Generation
+
+**Date**: Current session
+
+**Problem**: User requested a week's worth of data so that the lifetime view can have more data than the daily view.
+
+**Solution**:
+1. Modified `data/generate_intervals_with_routes.py` to generate 7 days of data instead of 1 day
+2. Added a loop that generates the same schedule for each day of the week
+3. Added weekend variations (skip gym on weekends, shorter study time)
+4. Added date filtering to the daily view so it only shows one day at a time
+5. Added a date selector UI component in the control panel for daily mode
+6. Updated all computed properties to use `filteredIntervals` instead of `intervals` for daily view
+
+**Changes Made**:
+- `data/generate_intervals_with_routes.py`: Added 7-day loop with weekend variations
+- `src/utils/dataLoader.js`: Added `filterIntervalsByDate()` function
+- `src/components/MapVisualization.vue`: 
+  - Added `selectedDate` and `availableDates` refs
+  - Added `filteredIntervals` computed property
+  - Updated timeline and sentiment calculations to use filtered intervals
+  - Added date selector dropdown in control panel
+  - Updated building sentiment calculation to use all intervals (for lifetime aggregation)
+
+**Result**: 
+- Generated 6,540 intervals across 7 days (Nov 18-24, 2024)
+- Daily view now filters to show only the selected day
+- Lifetime view aggregates across all 7 days
+- Date selector allows users to navigate between days in daily mode
+- Weekend variations: gym segments replaced with home time, shorter study sessions
+
+**Issue Found**: The generated data file needs to be copied to `public/intervals.json` for the web app to access it. The script generates it in `data/intervals.json`.
+
+## Schedule Variations and Date Range Update
+
+**Date**: Current session
+
+**Problem**: User requested to remove Monday Nov 18th and add variation in daily schedules so each day isn't identical.
+
+**Solution**:
+1. Changed base date from Nov 18 (Monday) to Nov 19 (Tuesday)
+2. Reduced generation from 7 days to 6 days (Tuesday through Sunday)
+3. Added `get_schedule_for_day()` function that creates day-specific schedule variations:
+   - **Tuesday**: Late gym (9am), skip class (replace with home time)
+   - **Wednesday**: Early class (11:30am), longer study session (until 10:30pm)
+   - **Thursday**: No gym (replace with home time), longer class (until 3pm)
+   - **Friday**: Early finish (study ends at 8pm instead of 10pm)
+   - **Weekends**: No gym (replace with home time), shorter study (ends at 9pm)
+
+**Changes Made**:
+- `data/generate_intervals_with_routes.py`: 
+  - Changed `base_date` to Nov 19, 2024
+  - Changed loop from `range(7)` to `range(6)`
+  - Renamed `schedule` to `base_schedule`
+  - Added `get_schedule_for_day()` function with day-specific logic
+  - Each day now gets a modified schedule based on day of week
+
+**Result**: 
+- Generated 6 days of data (Nov 19-24, 2024) with unique schedules per day
+- Each weekday has different activities/times
+- Weekends have relaxed schedules (no gym, shorter study)
+
+## Timezone Fix for Date Filtering
+
+**Date**: Current session
+
+**Problem**: Days were appearing to run from 7pm to 7pm instead of midnight to midnight due to timezone conversion issues.
+
+**Solution**:
+1. Updated `filterIntervalsByDate()` to use local date components instead of ISO string conversion
+2. Updated `availableDates` computed property to create dates at local midnight instead of UTC midnight
+3. Updated date selector change handler to create dates using local time components
+
+**Changes Made**:
+- `src/utils/dataLoader.js`: Changed date filtering to use `getFullYear()`, `getMonth()`, `getDate()` instead of `toISOString()`
+- `src/components/MapVisualization.vue`: 
+  - Updated `availableDates` to create dates at local midnight: `new Date(year, month - 1, day, 0, 0, 0, 0)`
+  - Updated date selector to parse dates in local timezone
+
+**Result**: 
+- Days now correctly show from midnight to midnight in local time
+- No more timezone conversion issues causing 7pm offset
+
 This document tracks the development process, decisions, and problem-solving for the sentiment visualization project.
 
 ## Project Overview
@@ -320,20 +403,130 @@ Building a Vue.js web application to visualize location-based sentiment data wit
 
 ### Step 4.7: Mapbox Directions API Integration
 **Action**: Integrated routing API for realistic travel paths
-- Uses Mapbox Directions API to get walking routes between locations
-- Caches routes to avoid repeated API calls
-- **Status**: ⏳ Partial - API integration added but route points not yet interpolated into increments
+- Uses Mapbox Directions API to get routes between locations
+- Routes integrated directly into intervals.json format
+- Travel intervals include route coordinates and travel_mode field
+- **Status**: ✅ Complete - Routes embedded in intervals.json
+
+### Step 4.8: Return to Intervals Format with Routes
+**Date**: Latest update
+**Action**: Switched back to intervals.json format with embedded Mapbox routes
+- Created `generate_intervals_with_routes.py` to generate intervals with real route paths
+- Travel segments include intermediate route points for curved paths
+- Travel mode (walking/driving) included in data
+- **Status**: ✅ Complete - Using intervals.json as primary data format
+
+### Step 4.9: Timeline Slider Re-implementation
+**Action**: Re-added timeline slider with 5-minute increment support
+- Slider works with intervals using 5-minute time increments
+- Shows current time and sentiment value
+- Black "you are here" dot moves with timeline
+- **Status**: ✅ Complete
+
+### Step 4.10: Sidebar Activity Aggregation
+**Action**: Updated sidebar to aggregate consecutive stays at same location
+- Multiple intervals at same location shown as single event
+- Average sentiment calculated for aggregated stays
+- Travel segments grouped and show correct travel mode
+- **Status**: ✅ Complete
+
+### Step 4.11: Click-to-Jump Timeline Feature
+**Action**: Added ability to click sidebar events to jump timeline
+- Clicking any activity card jumps timeline to start of that event
+- Timeline updates current position dot and sentiment display
+- **Status**: ✅ Complete
+
+### Step 4.12: Code Cleanup
+**Action**: Removed unused files and code
+- Deleted increments.json and related generation scripts
+- Removed unused building data files
+- Cleaned up imports and fallback code
+- **Status**: ✅ Complete
+
+## Recent Fixes
+
+### Issue 12: Map Not Draggable
+**Problem**: Map could only zoom, not drag/pan
+**Solution**: 
+- Updated mouse event handling to check for pickable objects before passing to Mapbox
+- Only pass drag events when not over deck.gl pickable objects
+- **Status**: ✅ Fixed
+
+### Issue 13: Red Sentiment Not Showing
+**Problem**: Negative sentiment values not showing as red on map
+**Solution**: 
+- Updated `getSentimentColor()` to show red for any negative value (not just < -0.3)
+- Now properly displays red for all negative sentiment scores
+- **Status**: ✅ Fixed
+
+### Issue 14: Too Many Dots Along Paths
+**Problem**: Dots appearing everywhere along travel paths
+**Solution**: 
+- Updated `aggregateIntervalsByLocation()` to filter out travel intervals
+- Dots now only appear at stay locations, not along paths
+- **Status**: ✅ Fixed
+
+### Issue 15: Timeline Slider Disappeared
+**Problem**: Timeline slider not showing when using intervals
+**Solution**: 
+- Updated timeline slider to work with intervals using 5-minute increments
+- Added computed properties for time increments and current sentiment
+- **Status**: ✅ Fixed
+
+### Issue 16: Hover/Click Not Working
+**Problem**: Hover tooltips and click expansion not working
+**Solution**: 
+- Fixed mouse event handling to properly detect pickable objects
+- Updated hover handlers to correctly identify dot layers
+- **Status**: ✅ Fixed
+
+### Issue 17: Lifetime Mode Shows Timeline
+**Problem**: Timeline slider appearing in Lifetime mode
+**Solution**: 
+- Updated timeline slider condition to only show in Daily mode
+- **Status**: ✅ Fixed
+
+### Issue 18: Hover Tooltips Not Working
+**Problem**: Hover tooltips were not appearing when hovering over sentiment dots, despite state being set correctly
+**Root Cause**: Multiple issues:
+1. Building layers had `pickable: true`, intercepting hover events before they reached dot layers
+2. Tooltip was rendered inside `map-container` which had CSS constraints (overflow, z-index) hiding it
+3. Tooltip positioning didn't account for viewport boundaries, causing long tooltips to be cut off
+
+**Solution**: 
+1. Set building layers to `pickable: false` so they don't intercept hover events
+2. Used Vue's `Teleport` component to render tooltip directly in `<body>`, bypassing map container CSS constraints
+3. Added `!important` flags to tooltip CSS to ensure visibility properties aren't overridden
+4. Implemented smart positioning that detects viewport boundaries and adjusts tooltip position:
+   - If tooltip would go off right edge, positions it to the left of cursor
+   - If tooltip would go off bottom edge, positions it above cursor
+   - Ensures tooltip stays within viewport bounds
+5. Made long tooltips scrollable with `max-height` and `overflow-y: auto` on both the tooltip container and detail sections
+6. Added comprehensive debugging logs to track tooltip state changes and DOM rendering
+
+**Date**: Latest update
+**Status**: ✅ Fixed - Tooltips now appear correctly and stay within viewport
+
+### Issue 19: Tooltips Not Scrollable on Hover
+**Problem**: Long tooltips couldn't be scrolled because moving mouse into tooltip area would cause unhover, making tooltip disappear
+**Solution**: 
+1. Changed tooltips from hover-based to click-based interaction
+2. Tooltips now open on click and stay open until:
+   - Same dot is clicked again (toggle)
+   - User clicks outside the tooltip (click-outside detection)
+3. Enabled `pointer-events: auto` on tooltip so it can receive mouse events for scrolling
+4. Updated hover handlers to only change cursor, not show tooltip
+5. Updated click handlers to show/hide tooltip and handle cluster expansion
+6. Added click-outside event listener to close tooltip when clicking on map
+
+**Date**: Latest update
+**Status**: ✅ Fixed - Tooltips are now click-based and fully scrollable
 
 ## Next Steps
 
-1. ✅ Implement striped dot visualization for overlapping intervals
-2. ✅ Add hover tooltips with detailed interval information
-3. ✅ Implement striped polygon fills for buildings/rooms
-4. ✅ Add expand-on-click cluster behavior
-5. ✅ Add legend for sentiment color coding
-6. ✅ Implement time-increment data format
-7. ✅ Add timeline slider with current position indicator
-8. ✅ Create stays sidebar with travel mode inference
-9. Complete route interpolation into increment data
-10. Test and refine all interactions
+1. ✅ All major features implemented
+2. ✅ Code cleanup complete
+3. ✅ Tooltip hover functionality working
+4. Test and refine all interactions
+5. Performance optimization if needed
 

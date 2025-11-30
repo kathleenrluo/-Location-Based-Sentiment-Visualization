@@ -8,19 +8,19 @@
         <div class="legend-section">
           <div class="legend-title">Sentiment Levels</div>
           <div class="legend-item">
-            <div class="legend-color" style="background-color: #dc3545;"></div>
-            <span class="legend-label">Negative (Stress)</span>
-            <span class="legend-range">&lt; -0.1</span>
+            <div class="legend-color" style="background-color: rgb(255, 0, 0);"></div>
+            <span class="legend-label">Negative (High Stress)</span>
+            <span class="legend-range">&lt; 0</span>
           </div>
           <div class="legend-item">
-            <div class="legend-color" style="background-color: #ffc107;"></div>
+            <div class="legend-color" style="background-color: rgb(255, 255, 0);"></div>
             <span class="legend-label">Neutral</span>
-            <span class="legend-range">-0.1 to 0.1</span>
+            <span class="legend-range">= 0</span>
           </div>
           <div class="legend-item">
-            <div class="legend-color" style="background-color: #28a745;"></div>
-            <span class="legend-label">Positive</span>
-            <span class="legend-range">&gt; 0.1</span>
+            <div class="legend-color" style="background-color: rgb(0, 200, 0);"></div>
+            <span class="legend-label">Positive (Low Stress)</span>
+            <span class="legend-range">&gt; 0</span>
           </div>
         </div>
 
@@ -30,12 +30,12 @@
           <div class="legend-item">
             <div class="legend-dot"></div>
             <span class="legend-label">Location Dots</span>
-            <span class="legend-desc">Click to expand clusters</span>
+            <span class="legend-desc">Hover for details, click to expand</span>
           </div>
           <div class="legend-item">
             <div class="legend-line"></div>
             <span class="legend-label">Travel Paths</span>
-            <span class="legend-desc">Color-coded by destination stress</span>
+            <span class="legend-desc">Color-coded by travel-time stress</span>
           </div>
           <div class="legend-item">
             <div class="legend-building"></div>
@@ -48,10 +48,20 @@
         <div class="legend-section">
           <div class="legend-title">View Modes</div>
           <div class="legend-item">
-            <strong>Daily View:</strong> Shows all intervals aggregated by location
+            <strong>Daily View:</strong> Single day with timeline slider
           </div>
           <div class="legend-item">
-            <strong>Lifetime View:</strong> Aggregated by time-of-day windows
+            <strong>Lifetime View:</strong> Multi-day aggregation by time-of-day
+          </div>
+        </div>
+        
+        <!-- Additional Info -->
+        <div class="legend-section">
+          <div class="legend-title">Interactions</div>
+          <div class="legend-item" style="font-size: 10px;">
+            • Hover dots for sentiment details<br>
+            • Click dots to expand clusters<br>
+            • Click sidebar events to jump timeline
           </div>
         </div>
       </div>

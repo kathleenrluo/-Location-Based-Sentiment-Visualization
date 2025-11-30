@@ -41,6 +41,28 @@ export async function loadBuildings() {
 }
 
 /**
+ * Filter intervals by date (for Daily mode - show only one day)
+ */
+export function filterIntervalsByDate(intervals, targetDate) {
+  if (!targetDate) return intervals
+  // Get date string in local timezone to avoid UTC conversion issues
+  const year = targetDate.getFullYear()
+  const month = String(targetDate.getMonth() + 1).padStart(2, '0')
+  const day = String(targetDate.getDate()).padStart(2, '0')
+  const targetDateStr = `${year}-${month}-${day}` // YYYY-MM-DD in local time
+  
+  return intervals.filter(interval => {
+    const intervalDate = new Date(interval.start_time)
+    // Compare dates in local timezone
+    const intervalYear = intervalDate.getFullYear()
+    const intervalMonth = String(intervalDate.getMonth() + 1).padStart(2, '0')
+    const intervalDay = String(intervalDate.getDate()).padStart(2, '0')
+    const intervalDateStr = `${intervalYear}-${intervalMonth}-${intervalDay}`
+    return intervalDateStr === targetDateStr
+  })
+}
+
+/**
  * Filter intervals by time window (for Daily mode)
  */
 export function filterIntervalsByTime(intervals, startHour, endHour) {
@@ -175,7 +197,7 @@ export function aggregateByTimeBuckets(intervals, bucketSize = 3) {
  * Get sentiment for a building based on nearby intervals
  * Optimized: uses simple distance calculation instead of expensive haversine
  */
-export function getBuildingSentiment(building, intervals, threshold = 0.0003) {
+export function getBuildingSentiment(building, intervals, threshold = 0.0003, groupByTimeBucket = false) {
   // Get building center (simplified - just average of coordinates)
   const coords = building.geometry.coordinates[0]
   let sumLat = 0, sumLon = 0
@@ -189,8 +211,6 @@ export function getBuildingSentiment(building, intervals, threshold = 0.0003) {
   // Use simple Euclidean distance (much faster than haversine for small distances)
   // At USC latitude, 0.0001 degrees ≈ 11 meters
   const thresholdSq = threshold * threshold
-  let sumSentiment = 0
-  let count = 0
   const nearbyIntervals = []
   
   for (const interval of intervals) {
@@ -199,17 +219,65 @@ export function getBuildingSentiment(building, intervals, threshold = 0.0003) {
     const distSq = dLat * dLat + dLon * dLon
     
     if (distSq < thresholdSq) {
-      sumSentiment += interval.sentiment_score
-      count++
       nearbyIntervals.push(interval)
     }
   }
   
-  if (count === 0) return null
+  if (nearbyIntervals.length === 0) return null
   
-  return {
-    sentiment: sumSentiment / count,
-    intervals: nearbyIntervals
+  if (groupByTimeBucket) {
+    // Group intervals by time-of-day buckets (3-hour windows)
+    const timeBuckets = {}
+    nearbyIntervals.forEach(interval => {
+      const date = interval.start_time instanceof Date ? interval.start_time : new Date(interval.start_time)
+      const hour = date.getHours()
+      const bucket = Math.floor(hour / 3) * 3 // 0-2, 3-5, 6-8, etc.
+      
+      if (!timeBuckets[bucket]) {
+        timeBuckets[bucket] = {
+          bucket,
+          intervals: [],
+          sumSentiment: 0,
+          count: 0
+        }
+      }
+      timeBuckets[bucket].intervals.push(interval)
+      timeBuckets[bucket].sumSentiment += interval.sentiment_score
+      timeBuckets[bucket].count++
+    })
+    
+    // Calculate average sentiment per bucket
+    const buckets = Object.values(timeBuckets).map(bucket => ({
+      ...bucket,
+      avgSentiment: bucket.sumSentiment / bucket.count,
+      timeRange: `${bucket.bucket}:00 - ${bucket.bucket + 3}:00`
+    }))
+    
+    // Sort by time bucket
+    buckets.sort((a, b) => a.bucket - b.bucket)
+    
+    // Calculate overall average
+    const totalSum = buckets.reduce((sum, b) => sum + b.sumSentiment, 0)
+    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0)
+    const overallSentiment = totalCount > 0 ? totalSum / totalCount : 0
+    
+    return {
+      sentiment: overallSentiment,
+      intervals: nearbyIntervals,
+      timeBuckets: buckets,
+      hasMultipleBuckets: buckets.length > 1
+    }
+  } else {
+    // Simple aggregation (for daily view)
+    let sumSentiment = 0
+    for (const interval of nearbyIntervals) {
+      sumSentiment += interval.sentiment_score
+    }
+    
+    return {
+      sentiment: sumSentiment / nearbyIntervals.length,
+      intervals: nearbyIntervals
+    }
   }
 }
 

@@ -1,8 +1,17 @@
 <template>
-  <div v-if="visible" class="tooltip" :style="tooltipStyle">
-    <div class="tooltip-content">
-      <h6 class="tooltip-title">{{ title }}</h6>
-      <div v-if="details" class="tooltip-details">
+  <Teleport to="body">
+    <div 
+      v-if="visible" 
+      class="tooltip" 
+      :style="tooltipStyle" 
+      ref="tooltipElement"
+      @mouseenter.stop
+      @mouseleave.stop
+      @click.stop
+    >
+      <div class="tooltip-content">
+        <h6 class="tooltip-title">{{ title }}</h6>
+        <div v-if="details" class="tooltip-details">
         <!-- Show interval breakdown if intervals array exists -->
         <div v-if="details.intervals && Array.isArray(details.intervals) && details.intervals.length > 0" class="intervals-breakdown">
           <div class="breakdown-header">Stress Breakdown:</div>
@@ -28,19 +37,29 @@
           <template v-for="(value, detailKey) in details" :key="`detail-${detailKey}`">
             <div v-if="detailKey !== 'intervals'" class="tooltip-row">
               <span class="tooltip-label">{{ formatLabel(detailKey) }}:</span>
-              <span class="tooltip-value" :style="detailKey === 'sentiment_score' || detailKey === 'avgSentiment' ? { color: getStressColor(value) } : {}">
+              <span class="tooltip-value" :style="(detailKey === 'sentiment_score' || detailKey === 'avgSentiment' || (typeof value === 'object' && value.sentiment)) ? { color: getStressColor(typeof value === 'object' ? value.sentiment : value) } : {}">
                 {{ formatValue(detailKey, value) }}
               </span>
             </div>
+            <!-- Show time bucket breakdown for lifetime mode -->
+            <div v-if="typeof value === 'object' && value.sentiment" class="time-bucket-item">
+              <div class="bucket-time">{{ detailKey }}</div>
+              <div class="bucket-details">
+                <span>Sentiment: <strong :style="{ color: getStressColor(value.sentiment) }">{{ value.sentiment }}</strong></span>
+                <span>Visits: {{ value.count }}</span>
+                <span>Duration: {{ value.duration }}</span>
+              </div>
+            </div>
           </template>
         </template>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script>
-import { computed } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 
 export default {
   name: 'Tooltip',
@@ -67,12 +86,94 @@ export default {
     }
   },
   setup(props) {
+    const tooltipElement = ref(null)
+    
     const tooltipStyle = computed(() => {
-      // Position relative to viewport
-      return {
-        left: `${props.x + 10}px`,
-        top: `${props.y + 10}px`,
-        position: 'fixed' // Use fixed positioning for viewport-relative coordinates
+      // Position relative to viewport with smart positioning to avoid going off-screen
+      const offset = 10
+      const tooltipMaxWidth = 300
+      const tooltipMaxHeight = 400
+      
+      // Get viewport dimensions
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      
+      // Calculate initial position (below and to the right of cursor)
+      let left = props.x + offset
+      let top = props.y + offset
+      
+      // Adjust horizontal position if tooltip would go off right edge
+      if (left + tooltipMaxWidth > viewportWidth) {
+        // Try positioning to the left of cursor
+        left = props.x - tooltipMaxWidth - offset
+        // If that's also off-screen, position at right edge with margin
+        if (left < 0) {
+          left = viewportWidth - tooltipMaxWidth - offset
+        }
+      }
+      
+      // Adjust vertical position if tooltip would go off bottom edge
+      if (top + tooltipMaxHeight > viewportHeight) {
+        // Try positioning above cursor
+        top = props.y - tooltipMaxHeight - offset
+        // If that's also off-screen, position at bottom edge with margin
+        if (top < 0) {
+          top = viewportHeight - tooltipMaxHeight - offset
+        }
+      }
+      
+      // Ensure tooltip doesn't go off left or top edges
+      if (left < offset) {
+        left = offset
+      }
+      if (top < offset) {
+        top = offset
+      }
+      
+      const style = {
+        left: `${left}px`,
+        top: `${top}px`,
+        position: 'fixed',
+        display: 'block',
+        visibility: 'visible',
+        opacity: '1',
+        zIndex: '10000'
+      }
+      return style
+    })
+    
+    watch(() => props.visible, (newVal) => {
+      console.log('Tooltip visible prop changed:', newVal)
+      if (newVal) {
+        // Use nextTick to ensure element is in DOM
+        nextTick(() => {
+          if (tooltipElement.value) {
+            const computed = window.getComputedStyle(tooltipElement.value)
+            const rect = tooltipElement.value.getBoundingClientRect()
+            console.log('Tooltip element exists in DOM:', tooltipElement.value)
+            console.log('Tooltip computed styles:', {
+              display: computed.display,
+              visibility: computed.visibility,
+              opacity: computed.opacity,
+              zIndex: computed.zIndex,
+              position: computed.position,
+              left: computed.left,
+              top: computed.top,
+              width: computed.width,
+              height: computed.height
+            })
+            console.log('Tooltip bounding rect:', {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              top: rect.top,
+              left: rect.left
+            })
+          } else {
+            console.warn('Tooltip element not found in DOM!')
+          }
+        })
       }
     })
 
@@ -94,6 +195,10 @@ export default {
     }
 
     const formatValue = (key, value) => {
+      // Handle time bucket objects (for lifetime mode)
+      if (typeof value === 'object' && value.sentiment !== undefined) {
+        return '' // Will be rendered separately
+      }
       if (key === 'sentiment_score' || key === 'avgSentiment') {
         return value.toFixed(2)
       }
@@ -142,6 +247,7 @@ export default {
     }
 
     return {
+      tooltipElement,
       tooltipStyle,
       formatLabel,
       formatValue,
@@ -156,16 +262,26 @@ export default {
 
 <style scoped>
 .tooltip {
-  position: fixed;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 8px 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  z-index: 2000;
-  pointer-events: none;
-  max-width: 300px;
-  font-size: 12px;
+  position: fixed !important;
+  background: white !important;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+  max-width: 300px !important;
+  max-height: 400px !important;
+  font-size: 12px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  min-width: 150px;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  /* Ensure tooltip can receive all mouse events */
+  touch-action: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tooltip-title {
@@ -179,6 +295,12 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 350px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Ensure scrolling works */
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tooltip-row {
@@ -199,6 +321,9 @@ export default {
 
 .intervals-breakdown {
   margin-top: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .breakdown-header {
