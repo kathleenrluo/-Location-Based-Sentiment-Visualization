@@ -211,6 +211,8 @@ export function getBuildingSentiment(building, intervals, threshold = 0.0003, gr
   // Use simple Euclidean distance (much faster than haversine for small distances)
   // At USC latitude, 0.0001 degrees ≈ 11 meters
   const thresholdSq = threshold * threshold
+  let sumSentiment = 0
+  let count = 0
   const nearbyIntervals = []
   
   for (const interval of intervals) {
@@ -219,65 +221,78 @@ export function getBuildingSentiment(building, intervals, threshold = 0.0003, gr
     const distSq = dLat * dLat + dLon * dLon
     
     if (distSq < thresholdSq) {
+      sumSentiment += interval.sentiment_score
+      count++
       nearbyIntervals.push(interval)
     }
   }
   
-  if (nearbyIntervals.length === 0) return null
+  if (count === 0) return null
   
+  // If grouping by time bucket (for lifetime mode), calculate time buckets
   if (groupByTimeBucket) {
-    // Group intervals by time-of-day buckets (3-hour windows)
     const timeBuckets = {}
+    const bucketSize = 3 // 3-hour buckets
+    
     nearbyIntervals.forEach(interval => {
-      const date = interval.start_time instanceof Date ? interval.start_time : new Date(interval.start_time)
+      const date = new Date(interval.start_time)
       const hour = date.getHours()
-      const bucket = Math.floor(hour / 3) * 3 // 0-2, 3-5, 6-8, etc.
+      const bucket = Math.floor(hour / bucketSize) * bucketSize
       
       if (!timeBuckets[bucket]) {
         timeBuckets[bucket] = {
           bucket,
           intervals: [],
           sumSentiment: 0,
-          count: 0
+          totalDuration: 0
         }
       }
+      
       timeBuckets[bucket].intervals.push(interval)
       timeBuckets[bucket].sumSentiment += interval.sentiment_score
-      timeBuckets[bucket].count++
+      timeBuckets[bucket].totalDuration += interval.duration_minutes
     })
     
-    // Calculate average sentiment per bucket
-    const buckets = Object.values(timeBuckets).map(bucket => ({
-      ...bucket,
-      avgSentiment: bucket.sumSentiment / bucket.count,
-      timeRange: `${bucket.bucket}:00 - ${bucket.bucket + 3}:00`
-    }))
-    
-    // Sort by time bucket
-    buckets.sort((a, b) => a.bucket - b.bucket)
-    
-    // Calculate overall average
-    const totalSum = buckets.reduce((sum, b) => sum + b.sumSentiment, 0)
-    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0)
-    const overallSentiment = totalCount > 0 ? totalSum / totalCount : 0
+    // Calculate weighted average sentiment per bucket (weighted by duration) and format time ranges
+    const bucketArray = Object.values(timeBuckets)
+      .map(bucket => {
+        // Calculate weighted average: sum(sentiment * duration) / sum(duration)
+        let weightedSum = 0
+        let totalWeight = 0
+        
+        bucket.intervals.forEach(interval => {
+          const duration = interval.duration_minutes || 0
+          weightedSum += interval.sentiment_score * duration
+          totalWeight += duration
+        })
+        
+        const weightedAvgSentiment = totalWeight > 0 ? weightedSum / totalWeight : 0
+        const startHour = bucket.bucket
+        const endHour = bucket.bucket + bucketSize
+        const timeRange = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:00`
+        
+        return {
+          bucket: bucket.bucket,
+          timeRange,
+          avgSentiment: weightedAvgSentiment,
+          count: bucket.intervals.length,
+          totalDuration: bucket.totalDuration
+        }
+      })
+      .filter(bucket => bucket.count > 0 && bucket.totalDuration > 0) // Only show buckets with data
+      .sort((a, b) => a.bucket - b.bucket)
     
     return {
-      sentiment: overallSentiment,
+      sentiment: sumSentiment / count, // Overall average
       intervals: nearbyIntervals,
-      timeBuckets: buckets,
-      hasMultipleBuckets: buckets.length > 1
+      timeBuckets: bucketArray,
+      hasMultipleBuckets: bucketArray.length > 1
     }
-  } else {
-    // Simple aggregation (for daily view)
-    let sumSentiment = 0
-    for (const interval of nearbyIntervals) {
-      sumSentiment += interval.sentiment_score
-    }
-    
-    return {
-      sentiment: sumSentiment / nearbyIntervals.length,
-      intervals: nearbyIntervals
-    }
+  }
+  
+  return {
+    sentiment: sumSentiment / count,
+    intervals: nearbyIntervals
   }
 }
 

@@ -83,6 +83,37 @@
 - Days now correctly show from midnight to midnight in local time
 - No more timezone conversion issues causing 7pm offset
 
+## Lifetime View: Buildings Only with Crosshatch Patterns
+
+**Date**: Current session
+
+**Problem**: User requested that lifetime view should only show colored buildings (no dots or lines), with crosshatch patterns for buildings with multiple time-of-day sentiments, and hover tooltips showing time-of-day breakdown.
+
+**Solution**:
+1. Updated `processedData` to return empty locations and paths arrays for lifetime view
+2. Updated `getBuildingSentiment()` to support time bucket calculation (3-hour buckets) when `groupByTimeBucket` is true
+3. Updated building rendering to show crosshatch/striped pattern for buildings with multiple time buckets in lifetime mode
+4. Added `handleBuildingHover()` and `handleBuildingClick()` functions for lifetime mode building interactions
+5. Made paths and dots layers only render in daily mode
+6. Buildings in lifetime mode are now pickable and show tooltips with time-of-day sentiment breakdown
+
+**Changes Made**:
+- `src/components/MapVisualization.vue`: 
+  - Updated `processedData` to return `{ locations: [], paths: [] }` for lifetime view
+  - Added building hover/click handlers for lifetime mode
+  - Updated building rendering to show striped pattern for multiple time buckets in lifetime mode
+  - Made paths and dots layers conditional on `viewMode.value === 'daily'`
+  - Updated `calculateBuildingSentiment()` to pass `groupByTimeBucket` flag
+- `src/utils/dataLoader.js`: 
+  - Updated `getBuildingSentiment()` to calculate time buckets (3-hour windows) when `groupByTimeBucket` is true
+  - Returns `timeBuckets` array with time ranges, average sentiment, count, and duration per bucket
+
+**Result**: 
+- Lifetime view now shows only colored buildings
+- Buildings with multiple time-of-day sentiments show crosshatch/striped patterns
+- Hovering buildings shows tooltip with breakdown by time of day (e.g., "00:00 - 03:00: sentiment 0.25, 45 min")
+- Clicking buildings locks the tooltip for scrolling
+
 This document tracks the development process, decisions, and problem-solving for the sentiment visualization project.
 
 ## Project Overview

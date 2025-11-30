@@ -36,19 +36,10 @@
         <template v-else>
           <template v-for="(value, detailKey) in details" :key="`detail-${detailKey}`">
             <div v-if="detailKey !== 'intervals'" class="tooltip-row">
-              <span class="tooltip-label">{{ formatLabel(detailKey) }}:</span>
-              <span class="tooltip-value" :style="(detailKey === 'sentiment_score' || detailKey === 'avgSentiment' || (typeof value === 'object' && value.sentiment)) ? { color: getStressColor(typeof value === 'object' ? value.sentiment : value) } : {}">
+              <span class="tooltip-label">{{ detailKey }}:</span>
+              <span class="tooltip-value" :style="(detailKey === 'sentiment_score' || detailKey === 'avgSentiment' || (typeof value === 'object' && value.sentiment !== undefined)) ? { color: getStressColor(typeof value === 'object' ? value.sentiment : value) } : {}">
                 {{ formatValue(detailKey, value) }}
               </span>
-            </div>
-            <!-- Show time bucket breakdown for lifetime mode -->
-            <div v-if="typeof value === 'object' && value.sentiment" class="time-bucket-item">
-              <div class="bucket-time">{{ detailKey }}</div>
-              <div class="bucket-details">
-                <span>Sentiment: <strong :style="{ color: getStressColor(value.sentiment) }">{{ value.sentiment }}</strong></span>
-                <span>Visits: {{ value.count }}</span>
-                <span>Duration: {{ value.duration }}</span>
-              </div>
             </div>
           </template>
         </template>
@@ -195,20 +186,24 @@ export default {
     }
 
     const formatValue = (key, value) => {
-      // Handle time bucket objects (for lifetime mode)
-      if (typeof value === 'object' && value.sentiment !== undefined) {
-        return '' // Will be rendered separately
+      // Handle time range keys (e.g., "00:00 - 03:00") with object values
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // This is a time bucket object with sentiment, count, duration
+        const sentiment = value.sentiment !== undefined ? value.sentiment.toFixed(2) : 'N/A'
+        const duration = value.duration !== undefined ? formatDuration(value.duration) : ''
+        const count = value.count !== undefined ? `${value.count} visits` : ''
+        // Format: "sentiment (count) duration"
+        const parts = [sentiment]
+        if (count) parts.push(`(${count})`)
+        if (duration) parts.push(duration)
+        return parts.join(' ')
       }
+      
       if (key === 'sentiment_score' || key === 'avgSentiment') {
         return value.toFixed(2)
       }
       if (key === 'duration_minutes' || key === 'totalDuration') {
-        const hours = Math.floor(value / 60)
-        const minutes = value % 60
-        if (hours > 0) {
-          return `${hours}h ${minutes}m`
-        }
-        return `${minutes}m`
+        return formatDuration(value)
       }
       if (key === 'start_time' || key === 'end_time') {
         return formatTime(value)
@@ -220,6 +215,16 @@ export default {
         return value.length
       }
       return value
+    }
+    
+    const formatDuration = (minutes) => {
+      if (!minutes || minutes === 0) return ''
+      const hours = Math.floor(minutes / 60)
+      const mins = Math.round(minutes % 60)
+      if (hours > 0) {
+        return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+      }
+      return `${mins}m`
     }
 
     const formatTime = (time) => {
@@ -254,7 +259,8 @@ export default {
       formatTime,
       formatSentiment,
       formatActivity,
-      getStressColor
+      getStressColor,
+      formatDuration
     }
   }
 }

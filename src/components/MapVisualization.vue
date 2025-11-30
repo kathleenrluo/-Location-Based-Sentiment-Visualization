@@ -353,24 +353,23 @@ export default {
       const batchSize = 1000
       
       for (let i = 0; i < buildings.value.features.length; i += batchSize) {
-        const batch = buildings.value.features.slice(i, i + batchSize)
-        batch.forEach(building => {
-          const result = getBuildingSentiment(building, intervals.value, 0.0003, groupByTimeBucket) // ~33 meters
-          if (result !== null) {
-            // Only include buildings with sentiment data to reduce rendering load
-            const buildingData = {
-              ...building,
-              sentiment: result.sentiment,
-              intervals: result.intervals // Store intervals for striping
+          const batch = buildings.value.features.slice(i, i + batchSize)
+          batch.forEach(building => {
+            const result = getBuildingSentiment(building, intervals.value, 0.0003, groupByTimeBucket) // ~33 meters
+            if (result !== null) {
+              const buildingData = {
+                ...building,
+                sentiment: result.sentiment,
+                intervals: result.intervals // Store intervals for striping
+              }
+              // Store time buckets for lifetime mode tooltips
+              if (groupByTimeBucket && result.timeBuckets) {
+                buildingData.timeBuckets = result.timeBuckets
+                buildingData.hasMultipleBuckets = result.hasMultipleBuckets
+              }
+              processedBuildings.push(buildingData)
             }
-            // Store time buckets for lifetime mode tooltips
-            if (groupByTimeBucket && result.timeBuckets) {
-              buildingData.timeBuckets = result.timeBuckets
-              buildingData.hasMultipleBuckets = result.hasMultipleBuckets
-            }
-            processedBuildings.push(buildingData)
-          }
-        })
+          })
       }
 
       console.log(`Found ${processedBuildings.length} buildings with sentiment data (${((performance.now() - startTime) / 1000).toFixed(2)}s)`)
@@ -383,22 +382,40 @@ export default {
         }, 50)
       }
     }
-
+    
     // Handle building hover/click for lifetime mode
     const handleBuildingHover = (info, building) => {
       if (viewMode.value !== 'lifetime') return
       
-      if (info && building && building.timeBuckets) {
+      if (info && building) {
         if (map) map.getCanvas().style.cursor = 'pointer'
-        // Show tooltip with time-of-day breakdown
+        
+        // Show tooltip with time-of-day breakdown if available, otherwise show overall sentiment
         const details = {}
-        building.timeBuckets.forEach(bucket => {
-          details[bucket.timeRange] = {
-            sentiment: bucket.avgSentiment.toFixed(2),
-            count: bucket.count,
-            duration: `${Math.round(bucket.totalDuration)} min`
+        if (building.timeBuckets && building.timeBuckets.length > 0) {
+          // Only show time buckets that have data
+          building.timeBuckets.forEach(bucket => {
+            if (bucket.count > 0 && bucket.totalDuration > 0) {
+              // Use timeRange as the key (e.g., "00:00 - 03:00")
+              details[bucket.timeRange] = {
+                sentiment: bucket.avgSentiment,
+                count: bucket.count,
+                duration: bucket.totalDuration
+              }
+            }
+          })
+        } else {
+          // Single time bucket or no time buckets - show overall sentiment
+          details['Overall'] = {
+            sentiment: building.sentiment,
+            count: building.intervals?.length || 0,
+            duration: building.intervals?.reduce((sum, i) => sum + (i.duration_minutes || 0), 0) || 0
           }
-        })
+        }
+        
+        console.log('Building tooltip - building:', building)
+        console.log('Building tooltip - timeBuckets:', building.timeBuckets)
+        console.log('Building tooltip - details:', details)
         
         tooltip.value = {
           visible: true,
@@ -419,15 +436,27 @@ export default {
     const handleBuildingClick = (info, building) => {
       if (viewMode.value !== 'lifetime') return
       
-      if (building && building.timeBuckets) {
+      if (building) {
         const details = {}
-        building.timeBuckets.forEach(bucket => {
-          details[bucket.timeRange] = {
-            sentiment: bucket.avgSentiment.toFixed(2),
-            count: bucket.count,
-            duration: `${Math.round(bucket.totalDuration)} min`
+        if (building.timeBuckets && building.timeBuckets.length > 0) {
+          // Only show time buckets that have data
+          building.timeBuckets.forEach(bucket => {
+            if (bucket.count > 0 && bucket.totalDuration > 0) {
+              details[bucket.timeRange] = {
+                sentiment: bucket.avgSentiment,
+                count: bucket.count,
+                duration: bucket.totalDuration
+              }
+            }
+          })
+        } else {
+          // Single time bucket or no time buckets - show overall sentiment
+          details['Overall'] = {
+            sentiment: building.sentiment,
+            count: building.intervals?.length || 0,
+            duration: building.intervals?.reduce((sum, i) => sum + (i.duration_minutes || 0), 0) || 0
           }
-        })
+        }
         
         // Toggle lock state
         if (tooltip.value?.visible && tooltip.value?.title === (building.properties?.name || 'Building')) {
@@ -444,7 +473,7 @@ export default {
         }
       }
     }
-    
+
     // Handle dot hover for tooltips
     // Helper function to build tooltip details from object
     const buildTooltipDetails = (obj) => {
@@ -741,7 +770,7 @@ export default {
                     }
                   },
                   onHover: (info) => {
-                    if (info.object && info.object === building) {
+                    if (info.object) {
                       handleBuildingHover(info, building)
                     } else {
                       handleBuildingHover(null, null)
@@ -751,9 +780,10 @@ export default {
               )
             })
           } else if (buildingIntervals.length > 1 && viewMode.value === 'daily') {
-            // Daily mode: striped for multiple intervals
+            // Create striped polygon for multiple intervals
             const stripedData = createStripedPolygonData(building, buildingIntervals)
             if (stripedData && stripedData.buckets.length > 1) {
+              // Render each time bucket as a separate semi-transparent layer for striping effect
               stripedData.buckets.forEach((bucket, bucketIdx) => {
                 const color = getSentimentColor(bucket.avgSentiment)
                 layersList.push(
@@ -764,7 +794,7 @@ export default {
                     getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.4)],
                     getLineColor: [150, 150, 150, 100],
                     lineWidthMinPixels: 0.5,
-                    pickable: false,
+                    pickable: false, // Buildings don't need hover - dots handle it
                     opacity: 0.4,
                     filled: true,
                     stroked: false,
@@ -775,6 +805,7 @@ export default {
                 )
               })
             } else {
+              // Single sentiment - render normally
               const color = getSentimentColor(building.sentiment)
               layersList.push(
                 new PolygonLayer({
@@ -784,7 +815,7 @@ export default {
                   getFillColor: [color[0], color[1], color[2], Math.floor(color[3] * 0.6)],
                   getLineColor: [150, 150, 150, 150],
                   lineWidthMinPixels: 1,
-                  pickable: false,
+                  pickable: false, // Buildings don't need hover - dots handle it
                   opacity: 0.5,
                   updateTriggers: {
                     getFillColor: [viewMode.value]
@@ -793,7 +824,7 @@ export default {
               )
             }
           } else {
-            // Single sentiment building
+            // Single sentiment building (or lifetime building with single time bucket)
             const color = getSentimentColor(building.sentiment)
             layersList.push(
               new PolygonLayer({
@@ -814,7 +845,7 @@ export default {
                   }
                 } : undefined,
                 onHover: isLifetime ? (info) => {
-                  if (info.object && info.object === building) {
+                  if (info.object) {
                     handleBuildingHover(info, building)
                   } else {
                     handleBuildingHover(null, null)
@@ -851,9 +882,9 @@ export default {
         )
       }
 
-      // Travel paths layer - color coded by travel-time sentiment
-      console.log('Creating paths layer, paths count:', processedData.value.paths.length)
-      if (processedData.value.paths.length > 0) {
+      // Travel paths layer - color coded by travel-time sentiment (only in daily mode)
+      if (viewMode.value === 'daily' && processedData.value.paths && processedData.value.paths.length > 0) {
+        console.log('Creating paths layer, paths count:', processedData.value.paths.length)
         // Convert paths to format expected by PathLayer
         const pathData = processedData.value.paths.map(path => {
           // If path has 'path' array, use it (route with multiple points)
@@ -893,8 +924,8 @@ export default {
       }
       
       // Current position indicator (black dot showing "you are here")
-      // Show for both increments and intervals
-      if (useIncrements.value && increments.value.length > 0) {
+      // Only show in daily mode, not lifetime
+      if (viewMode.value === 'daily' && useIncrements.value && increments.value.length > 0) {
         const currentIndex = Math.min(currentTimeIndex.value, increments.value.length - 1)
         const currentIncrement = increments.value[currentIndex]
         if (currentIncrement) {
@@ -923,7 +954,7 @@ export default {
             })
           )
         }
-      } else if (intervals.value.length > 0 && timeIncrements.value.length > 0) {
+      } else if (viewMode.value === 'daily' && intervals.value.length > 0 && timeIncrements.value.length > 0) {
         // Show current position for intervals - find which interval contains the current time
         const currentTime = timeIncrements.value[currentTimeIndex.value]
         if (currentTime) {
@@ -1085,101 +1116,6 @@ export default {
             })
           )
         }
-        
-        // Old striped dot code removed - was creating too many layers
-        if (false && stripedDots.length > 0) {
-          stripedDots.forEach((dot, idx) => {
-            const isHovered = hoveredLocation.value && 
-              hoveredLocation.value.position[0] === dot.position[0] &&
-              hoveredLocation.value.position[1] === dot.position[1]
-            
-            if (isHovered) {
-              // Expanded view: show each interval as separate dot
-              const numIntervals = dot.intervals.length
-              const angleStep = (2 * Math.PI) / numIntervals
-              const radius = 0.00015 // ~15 meters in lat/lon
-              
-              dot.intervals.forEach((interval, i) => {
-                const angle = i * angleStep
-                const offsetX = Math.cos(angle) * radius
-                const offsetY = Math.sin(angle) * radius
-                
-                layersList.push(
-                  new ScatterplotLayer({
-                    id: `sentiment-dot-expanded-${idx}-${i}`,
-                    data: [{
-                      position: [
-                        dot.position[0] + offsetX,
-                        dot.position[1] + offsetY
-                      ],
-                      sentiment: interval.sentiment_score,
-                      interval: interval,
-                      dot: dot,
-                      location: dot.location
-                    }],
-                    getPosition: d => d.position,
-                    getRadius: 10,
-                    getFillColor: d => getSentimentColor(d.sentiment),
-                    getLineColor: [0, 0, 0, 255],
-                    lineWidthMinPixels: 1.5,
-                    pickable: true,
-                    radiusMinPixels: 10,
-                    radiusMaxPixels: 10,
-                    onHover: (info) => {
-                      if (info.object) {
-                        handleDotHover({ ...info, object: { ...info.object.dot, interval: info.object.interval } })
-                      }
-                    }
-                  })
-                )
-              })
-            } else {
-              // Collapsed view: show as single striped dot (multiple overlapping circles)
-              // Create a pattern by rendering segments as small offset circles
-              dot.segments.forEach((segment, segIdx) => {
-                const centerAngle = segment.startAngle + (segment.endAngle - segment.startAngle) / 2
-                const offset = 0.00003 // Very small offset for visual striping effect
-                const offsetX = Math.cos(centerAngle) * offset
-                const offsetY = Math.sin(centerAngle) * offset
-                
-                layersList.push(
-                  new ScatterplotLayer({
-                    id: `sentiment-dot-striped-${idx}-${segIdx}`,
-                    data: [{
-                      position: [
-                        dot.position[0] + offsetX,
-                        dot.position[1] + offsetY
-                      ],
-                      sentiment: segment.sentiment,
-                      dot: dot
-                    }],
-                    getPosition: d => d.position,
-                    getRadius: 8,
-                    getFillColor: d => {
-                      const color = getSentimentColor(d.sentiment)
-                      // Make slightly transparent for overlapping effect
-                      return [color[0], color[1], color[2], 200]
-                    },
-                    getLineColor: [0, 0, 0, 255],
-                    lineWidthMinPixels: 1,
-                    pickable: true,
-                    radiusMinPixels: 8,
-                    radiusMaxPixels: 8,
-                    onHover: (info) => {
-                      if (info.object) {
-                        handleDotHover({ ...info, object: info.object.dot })
-                      }
-                    },
-                    onClick: (info) => {
-                      if (info.object) {
-                        handleDotClick({ ...info, object: info.object.dot })
-                      }
-                    }
-                  })
-                )
-              })
-            }
-          })
         }
       }
 
@@ -1212,7 +1148,15 @@ export default {
 
     // Update deck.gl layers when view mode changes
     watch([viewMode], () => {
-      updateDeckLayers()
+      // Recalculate building sentiment when switching modes (to get timeBuckets for lifetime)
+      if (intervals.value.length > 0 && buildings.value) {
+        setTimeout(() => {
+          calculateBuildingSentiment()
+          updateDeckLayers()
+        }, 100)
+      } else {
+        updateDeckLayers()
+      }
     })
     
     // Watch for currentTimeIndex changes to update current position indicator
@@ -1670,7 +1614,9 @@ export default {
       currentSentiment,
       handleJumpToTime,
       formatDateForInput,
-      handleDateChange
+      handleDateChange,
+      handleBuildingHover,
+      handleBuildingClick
     }
   }
 }
