@@ -1000,6 +1000,8 @@ export default {
       // Sentiment dots layer (with striped support for multiple intervals) - only in daily mode
       if (viewMode.value === 'daily') {
         console.log('Creating dots layer, locations count:', processedData.value.locations.length)
+        console.log('Filtered intervals count:', filteredIntervals.value.length)
+        console.log('Total intervals count:', intervals.value.length)
         if (processedData.value.locations.length > 0) {
         const dotData = processedData.value.locations.map(loc => {
           const stripedData = createStripedDotData(loc.location, loc.intervals)
@@ -1228,6 +1230,17 @@ export default {
     onMounted(async () => {
       // Initialize Mapbox map with your token
       mapboxgl.accessToken = 'pk.eyJ1Ijoia3JsdW8iLCJhIjoiY21oaWwwdTNuMTR1aTJzb242ejQybm0zYiJ9.baefOu17StTORLdFeRHMEA'
+      
+      // Suppress Mapbox telemetry errors (caused by ad blockers)
+      // These are harmless but clutter the console
+      const originalConsoleError = console.error
+      console.error = function(...args) {
+        // Filter out Mapbox telemetry errors
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('ERR_BLOCKED_BY_CLIENT') && args[0].includes('events.mapbox.com')) {
+          return // Silently ignore
+        }
+        originalConsoleError.apply(console, args)
+      }
       
       map = new mapboxgl.Map({
         container: mapContainer.value,

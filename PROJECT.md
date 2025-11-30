@@ -7,7 +7,7 @@
 - Project title:
 - Group name:
 - Team members:
-  1. member-name member-username@usc.edu
+  1. Kathleen Luo krluo@usc.edu
   2. member-name member-username@usc.edu
   3. member-name member-username@usc.edu
   4. member-name member-username@usc.edu
@@ -23,22 +23,22 @@
 
 Provide in 250 characters or less contributions next to each team member
 - Paper:
-  1. member-name: 
+  1. Kathleen Luo: the idea and significance of the project/proofreading
   2. member-name:
   3. member-name:
   4. member-name:
 - Demonstration:
-  1. member-name: 
+  1. Kathleen Luo: coding and debugging, deployed the app
   2. member-name:
   3. member-name:
   4. member-name:
 - Presentation:
-  1. member-name: 
+  1. Kathleen Luo: contributed the video
   2. member-name:
   3. member-name:
   4. member-name: 
 - YouTube video:
-  1. member-name: 
+  1. Kathleen Luo: recording and scripting
   2. member-name:
   3. member-name:
   4. member-name:

@@ -125,8 +125,11 @@ export function aggregateIntervalsByLocation(intervals) {
     return interval.location_name !== 'Traveling' && interval.location_type !== 'traveling'
   })
   
+  console.log('aggregateIntervalsByLocation: total intervals:', intervals.length, 'stay intervals:', stayIntervals.length)
+  
   stayIntervals.forEach(interval => {
-    const key = `${interval.latitude.toFixed(6)},${interval.longitude.toFixed(6)}`
+    // Use 5 decimal places for grouping (about 1 meter precision) to catch nearby locations
+    const key = `${interval.latitude.toFixed(5)},${interval.longitude.toFixed(5)}`
     if (!groups[key]) {
       groups[key] = {
         location: {
