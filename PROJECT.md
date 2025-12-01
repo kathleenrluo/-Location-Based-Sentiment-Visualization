@@ -8,7 +8,7 @@
 - Group name:
 - Team members:
   1. Kathleen Luo krluo@usc.edu
-  2. member-name member-username@usc.edu
+  2. Grace Kuo gracekuo@usc.edu
   3. member-name member-username@usc.edu
   4. member-name member-username@usc.edu
 
@@ -24,7 +24,7 @@
 Provide in 250 characters or less contributions next to each team member
 - Paper:
   1. Kathleen Luo: the idea and significance of the project/proofreading
-  2. member-name:
+  2. Grace Kuo: Writing Data, Implementation, and Testing Sections 
   3. member-name:
   4. member-name:
 - Demonstration:
