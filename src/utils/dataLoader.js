@@ -3,10 +3,19 @@
  */
 
 /**
+ * Get base URL for assets (handles GitHub Pages subdirectory)
+ */
+function getBaseUrl() {
+  // Use import.meta.env.BASE_URL in Vite, which includes the base path
+  return import.meta.env.BASE_URL || '/'
+}
+
+/**
  * Load intervals data from JSON file (legacy format)
  */
 export async function loadIntervals() {
-  const response = await fetch('/intervals.json')
+  const baseUrl = getBaseUrl()
+  const response = await fetch(`${baseUrl}intervals.json`)
   if (!response.ok) {
     throw new Error(`Failed to load intervals.json: ${response.status} ${response.statusText}`)
   }
@@ -28,7 +37,8 @@ export async function loadIntervals() {
  * Load locations data from JSON file
  */
 export async function loadLocations() {
-  const response = await fetch('/locations.json')
+  const baseUrl = getBaseUrl()
+  const response = await fetch(`${baseUrl}locations.json`)
   return await response.json()
 }
 
@@ -36,7 +46,8 @@ export async function loadLocations() {
  * Load building footprints from GeoJSON file
  */
 export async function loadBuildings() {
-  const response = await fetch('/buildings_usc.geojson')
+  const baseUrl = getBaseUrl()
+  const response = await fetch(`${baseUrl}buildings_usc.geojson`)
   return await response.json()
 }
 
