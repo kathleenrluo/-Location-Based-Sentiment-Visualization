@@ -14,9 +14,9 @@
 
 ## ARTIFACTS
 
-- [Paper PDF](<article-pdf-url>) and [Paper Overleaf URL](<overleaf-article-url>)
-- [Demonstration URL](<demo-url>)
-- [Presentation URL](<presentation-pdf-url>)
+- [Paper PDF](<article-pdf-url>) and [Paper Overleaf URL](<https://www.overleaf.com/read/wrbnchnykmft#f870ed>)
+- [Demonstration URL](<https://dsci-554.github.io/project-team12/>)
+- [Presentation URL](<https://www.figma.com/slides/9zZaPeOg5dfguhB4Dbd4On/554-Research-Project?node-id=1-337&t=KBz1m0ERmFLn6Coz-1)
 - [YouTube video Link](<youtube-video-url>)
 
 ## TEAM CONTRIBUTIONS
