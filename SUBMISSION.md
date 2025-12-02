@@ -10,7 +10,7 @@
   1. Kathleen Luo krluo@usc.edu
   2. Grace Kuo gracekuo@usc.edu
   3. Hannah Jiang hyjiang@usc.edu
-  4. Tiger Z taigezha@usc.edu
+  4. Tiger Zhang taigezha@usc.edu
 
 ## ARTIFACTS
 
@@ -18,7 +18,7 @@ Make sure the links are accessible.
 - [Paper PDF](<article-pdf-url>) and [Paper Overleaf URL](<overleaf-article-url>)
 - [Demonstration URL](<https://dsci-554.github.io/project-team12/>)
 - [Presentation URL](<https://docs.google.com/presentation/d/151tLdGFz1pGVRGTFVFm4lVZDGDpLXO6_Z9unuAJABS0/edit?usp=sharing>)
-- [YouTube video Link](<youtube-video-url>)
+- [YouTube video Link](https://youtu.be/o5eeglW-tpU)
 
 ## TEAM CONTRIBUTIONS
 
