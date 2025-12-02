@@ -34,12 +34,12 @@ Provide contributions in 250 characters or fewer next to each team member
   3. member-name:
   4. member-name:
 - Presentation:
-  1. Kathleen Luo: contributed the video, templated the slides, wrote intro and conclusion
+  1. Kathleen Luo: templated the slides, wrote intro and conclusion
   2. member-name:
   3. member-name:
   4. member-name: 
 - YouTube video:
-  1. Kathleen Luo: recording and scripting
+  1. Kathleen Luo: scripting
   2. member-name:
   3. member-name:
   4. member-name:
