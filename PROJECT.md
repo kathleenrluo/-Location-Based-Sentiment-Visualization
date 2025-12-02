@@ -4,8 +4,8 @@
 
 ## PROJECT INFORMATION
 
-- Project title:
-- Group name:
+- Project title: Location-Based Sentiment Visualization
+- Group name: Group 12
 - Team members:
   1. Kathleen Luo krluo@usc.edu
   2. Grace Kuo gracekuo@usc.edu
@@ -16,8 +16,8 @@
 
 - [Paper PDF](<article-pdf-url>) and [Paper Overleaf URL](<https://www.overleaf.com/read/wrbnchnykmft#f870ed>)
 - [Demonstration URL](<https://dsci-554.github.io/project-team12/>)
-- [Presentation URL](<https://www.figma.com/slides/9zZaPeOg5dfguhB4Dbd4On/554-Research-Project?node-id=1-337&t=KBz1m0ERmFLn6Coz-1)
-- [YouTube video Link](<youtube-video-url>)
+- [Presentation URL](https://docs.google.com/presentation/d/151tLdGFz1pGVRGTFVFm4lVZDGDpLXO6_Z9unuAJABS0/edit?usp=sharing)
+- [YouTube video Link](https://youtu.be/o5eeglW-tpU)
 
 ## TEAM CONTRIBUTIONS
 
@@ -38,8 +38,8 @@ Provide in 250 characters or less contributions next to each team member
   3. member-name:
   4. member-name: 
 - YouTube video:
-  1. Kathleen Luo: recording and scripting
+  1. Kathleen Luo: 
   2. member-name:
-  3. member-name:
+  3. Hannah Jiang: scripting, recording, publishing
   4. member-name:
  
