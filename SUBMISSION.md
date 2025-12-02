@@ -4,13 +4,13 @@
 
 ## PROJECT INFORMATION
 
-- Project title:
+- Project title: Location-Based Sentiment Visualization
 - Group name: Group 12
 - Team members: Kathleen Luo
   1. Kathleen Luo krluo@usc.edu
-  2. member-name member-username@usc.edu
-  3. member-name member-username@usc.edu
-  4. member-name member-username@usc.edu
+  2. Grace Kuo gracekuo@usc.edu
+  3. Hannah Jiang hyjiang@usc.edu
+  4. Tiger Z taigezha@usc.edu
 
 ## ARTIFACTS
 
@@ -25,22 +25,22 @@ Make sure the links are accessible.
 Provide contributions in 250 characters or fewer next to each team member
 - Paper:
   1. Kathleen Luo: research, the idea and significance of the project/proofreading
-  2. Grace Kuo: Writing Data, Implementation, and Testing Sections 
-  3. member-name:
-  4. member-name:
+  2. Grace Kuo: writing Data, Implementation, and Testing sections 
+  3. Hannah Jiang: writing Introduction and Related Works sections
+  4. Tiger Zhang: writing Usage Scenarios, Results, and Conclusions sections
 - Demonstration:
   1. Kathleen Luo: coding and debugging, deployed the app
-  2. member-name:
-  3. member-name:
-  4. member-name:
+  2. Grace Kuo:
+  3. Hannah Jiang:
+  4. Tiger Zhang:
 - Presentation:
   1. Kathleen Luo: templated the slides, wrote intro and conclusion
-  2. member-name:
-  3. member-name:
-  4. member-name: 
+  2. Grace Kuo: Key Contributions, Methods slides
+  3. Hannah Jiang: Related Works & video slide
+  4. Tiger Zhang: Conclusion slide
 - YouTube video:
   1. Kathleen Luo: scripting
-  2. member-name:
-  3. member-name:
-  4. member-name:
+  2. Grace Kuo: scripting
+  3. Hannah Jiang: recording and publishing 
+  4. Tiger Zhang: scripting
  
