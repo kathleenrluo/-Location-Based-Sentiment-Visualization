@@ -6,7 +6,7 @@
 
 - Project title: Location-Based Sentiment Visualization
 - Group name: Group 12
-- Team members: Kathleen Luo
+- Team members: 
   1. Kathleen Luo krluo@usc.edu
   2. Grace Kuo gracekuo@usc.edu
   3. Hannah Jiang hyjiang@usc.edu
