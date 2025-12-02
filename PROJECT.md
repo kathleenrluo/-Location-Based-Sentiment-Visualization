@@ -10,7 +10,7 @@
   1. Kathleen Luo krluo@usc.edu
   2. Grace Kuo gracekuo@usc.edu
   3. Hannah Jiang hyjiang@usc.edu
-  4. member-name member-username@usc.edu
+  4. Taige Zhang taigezha@usc.edu
 
 ## ARTIFACTS
 
@@ -26,7 +26,7 @@ Provide in 250 characters or less contributions next to each team member
   1. Kathleen Luo: the idea and significance of the project/proofreading
   2. Grace Kuo: Writing Data, Implementation, and Testing Sections 
   3. Hannah Jiang: Writing Introduction and Related Works sections 
-  4. member-name:
+  4. Tiger Zhang: Writing Usage Scenario and Results  and Conclusiion sections.
 - Demonstration:
   1. Kathleen Luo: coding and debugging, deployed the app
   2. member-name:
