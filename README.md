@@ -1,6 +1,9 @@
-# Sentiment Visualization - Location-Based Emotion Tracking
+# Location-Based Sentiment Visualization
 
 An interactive web application for visualizing location-based sentiment data over time. Built with Vue.js, deck.gl, and Bootstrap.
+
+**Repository:** [GitHub](https://github.com/kathleenrluo/-Location-Based-Sentiment-Visualization)  
+**Live Demo:** [View Application](https://kathleenrluo.github.io/-Location-Based-Sentiment-Visualization/) (if deployed)
 
 ## Features
 
@@ -20,8 +23,8 @@ An interactive web application for visualizing location-based sentiment data ove
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd project-team12
+git clone https://github.com/kathleenrluo/-Location-Based-Sentiment-Visualization.git
+cd -Location-Based-Sentiment-Visualization
 ```
 
 2. Install dependencies:
@@ -100,7 +103,7 @@ Source data and processing scripts are in the `data/` directory. See `data/READM
 ## Project Structure
 
 ```
-project-team12/
+-Location-Based-Sentiment-Visualization/
 ├── src/
 │   ├── components/
 │   │   └── MapVisualization.vue  # Main map component
@@ -180,11 +183,18 @@ For GitHub Pages deployment:
 npm run build
 ```
 
-2. Configure `vite.config.js` with the correct `base` path for your repository
+2. The `vite.config.js` is already configured with the correct `base` path for this repository
 
-3. Deploy the `dist` folder to GitHub Pages
+3. Deploy the `dist` folder to GitHub Pages:
+   - Go to repository Settings → Pages
+   - Select source: "Deploy from a branch"
+   - Branch: `main`, folder: `/dist`
+   - Your site will be available at: `https://kathleenrluo.github.io/-Location-Based-Sentiment-Visualization/`
 
-See the [Vue example](https://github.com/dsci-554/vue-example) for detailed deployment instructions.
+Alternatively, use the deploy script:
+```bash
+npm run deploy
+```
 
 ## Troubleshooting
 
@@ -200,10 +210,10 @@ See the [Vue example](https://github.com/dsci-554/vue-example) for detailed depl
 - Ensure all dependencies are installed: `npm install`
 - Check Node.js version compatibility
 
+## About
+
+This project was originally created for DSCI 554 (Data Visualization) at USC as a team project. It demonstrates interactive geospatial data visualization techniques using modern web technologies.
+
 ## License
 
 This project is part of DSCI 554 coursework at USC.
-
-## Contributors
-
-Team 12 - DSCI 554
